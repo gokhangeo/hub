@@ -1,0 +1,307 @@
+<meta name='viewport' content='width=device-width, initial-scale=1'/><!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Müdürüm Hub - Operasyon Merkezi</title>
+    
+    <!-- Kütüphaneler -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <style>
+        body { background-color: #020617; margin: 0; overflow: hidden; }
+        .touch-none { touch-action: none; }
+        /* iPhone güvenli alan ayarı */
+        .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // Lucide ikonu için yardımcı bileşen
+        const Icon = ({ name, size = 20, className = "" }) => {
+            const [iconSvg, setIconSvg] = useState("");
+            useEffect(() => {
+                if (window.lucide) {
+                    const svg = window.lucide.createIcons({
+                        icons: { [name]: true },
+                        attrs: { width: size, height: size, class: className }
+                    });
+                }
+            }, [name, size, className]);
+            return <i data-lucide={name} className={className} style={{ width: size, height: size }}></i>;
+        };
+
+        const App = () => {
+            const [myId, setMyId] = useState('');
+            const [remoteId, setRemoteId] = useState('');
+            const [peer, setPeer] = useState(null);
+            const [connection, setConnection] = useState(null);
+            const [activeTab, setActiveTab] = useState('transfer'); 
+            const [messages, setMessages] = useState([]);
+            const [inputText, setInputText] = useState('');
+            const [transferStatus, setTransferStatus] = useState('idle');
+            const [receivedFile, setReceivedFile] = useState(null);
+            const [showQr, setShowQr] = useState(false);
+            const [isTalking, setIsTalking] = useState(false);
+
+            const fileInputRef = useRef(null);
+            const qrRef = useRef(null);
+            const chatEndRef = useRef(null);
+            const remoteAudioRef = useRef(null);
+            const myStreamRef = useRef(null);
+            const currentCallRef = useRef(null);
+
+            useEffect(() => {
+                const urlParams = new URLSearchParams(window.location.search);
+                const targetId = urlParams.get('join');
+                if (targetId) setRemoteId(targetId);
+
+                const shortId = Math.random().toString(36).substring(2, 7).toUpperCase();
+                const newPeer = new window.Peer(shortId);
+                
+                newPeer.on('open', (id) => {
+                    setMyId(id);
+                    setPeer(newPeer);
+                });
+
+                newPeer.on('connection', (conn) => setupConnection(conn));
+                newPeer.on('call', (call) => {
+                    call.answer(); 
+                    call.on('stream', (stream) => {
+                        if (remoteAudioRef.current) remoteAudioRef.current.srcObject = stream;
+                    });
+                });
+
+                setTimeout(() => window.lucide.createIcons(), 500);
+            }, []);
+
+            useEffect(() => {
+                if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+            }, [messages]);
+
+            const setupConnection = (conn) => {
+                setConnection(conn);
+                setTransferStatus('connected');
+                conn.on('data', (data) => {
+                    if (data.type === 'file') {
+                        const blob = new Blob([data.file], { type: data.fileType });
+                        setReceivedFile({ url: URL.createObjectURL(blob), name: data.fileName });
+                        setTransferStatus('completed');
+                    } else if (data.type === 'chat') {
+                        setMessages(prev => [...prev, { sender: 'other', text: data.text, time: new Date().toLocaleTimeString() }]);
+                    }
+                });
+            };
+
+            const connectToPeer = () => {
+                if (!remoteId || !peer) return;
+                setTransferStatus('connecting');
+                const conn = peer.connect(remoteId);
+                setupConnection(conn);
+            };
+
+            const sendMessage = () => {
+                if (!inputText || !connection) return;
+                connection.send({ type: 'chat', text: inputText });
+                setMessages(prev => [...prev, { sender: 'me', text: inputText, time: new Date().toLocaleTimeString() }]);
+                setInputText('');
+            };
+
+            const startTalking = async (e) => {
+                if (e) e.preventDefault();
+                if (isTalking || !remoteId) return;
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    myStreamRef.current = stream;
+                    setIsTalking(true);
+                    currentCallRef.current = peer.call(remoteId, stream);
+                } catch (err) { setIsTalking(false); }
+            };
+
+            const stopTalking = (e) => {
+                if (e) e.preventDefault();
+                setIsTalking(false);
+                if (myStreamRef.current) {
+                    myStreamRef.current.getTracks().forEach(track => track.stop());
+                    myStreamRef.current = null;
+                }
+                if (currentCallRef.current) currentCallRef.current.close();
+            };
+
+            const sendFile = (e) => {
+                const file = e.target.files[0];
+                if (!file || !connection) return;
+                setTransferStatus('sending');
+                const reader = new FileReader();
+                reader.onload = () => {
+                    connection.send({ type: 'file', file: reader.result, fileName: file.name, fileType: file.type });
+                    setTransferStatus('completed');
+                };
+                reader.readAsArrayBuffer(file);
+            };
+
+            useEffect(() => {
+                if (myId && showQr && qrRef.current) {
+                    qrRef.current.innerHTML = "";
+                    new window.QRCode(qrRef.current, {
+                        text: `${window.location.href.split('?')[0]}?join=${myId}`,
+                        width: 150, height: 150
+                    });
+                }
+            }, [myId, showQr]);
+
+            return (
+                <div className="h-screen w-screen flex items-center justify-center bg-slate-950 font-sans select-none overflow-hidden">
+                    <div className="w-full max-w-md bg-slate-900 h-full md:h-[90vh] md:rounded-[2.5rem] flex flex-col relative border-slate-800 border-x">
+                        
+                        {/* Header */}
+                        <div className="p-6 bg-slate-900 border-b border-slate-800">
+                            <div className="flex justify-between items-center mb-4">
+                                <h1 className="text-sm font-black text-indigo-500 uppercase tracking-widest flex items-center gap-2">
+                                    <Icon name="zap" size={18} className="fill-current" /> HUB MERKEZİ
+                                </h1>
+                                <button onClick={() => setShowQr(!showQr)} className="p-2 bg-indigo-600 rounded-xl">
+                                    <Icon name="qr-code" size={18} className="text-white" />
+                                </button>
+                            </div>
+                            <div className="bg-slate-950 p-3 rounded-2xl flex items-center justify-between border border-slate-800">
+                                <div>
+                                    <p className="text-[9px] text-slate-500 font-bold uppercase">Kimliğiniz</p>
+                                    <p className="text-xl font-mono font-black text-white">{myId || "..."}</p>
+                                </div>
+                                <button onClick={() => navigator.clipboard.writeText(myId)} className="text-slate-600">
+                                    <Icon name="copy" size={16} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Tabs */}
+                        <div className="flex p-2 bg-slate-950/30 gap-1 border-b border-slate-800">
+                            {[
+                                { id: 'transfer', icon: 'file-up', label: 'Dosya' },
+                                { id: 'chat', icon: 'message-square', label: 'Mesaj' },
+                                { id: 'radio', icon: 'volume-2', label: 'Telsiz' }
+                            ].map(tab => (
+                                <button 
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`flex-1 flex flex-col items-center gap-1 py-3 rounded-2xl transition-all font-bold text-[10px] uppercase ${activeTab === tab.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-600'}`}
+                                >
+                                    <Icon name={tab.icon} size={18} />
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Main */}
+                        <div className="flex-1 overflow-y-auto p-6 relative">
+                            {showQr && (
+                                <div className="absolute inset-0 z-50 bg-slate-950/95 flex items-center justify-center p-8 animate-in fade-in">
+                                    <div className="bg-white p-6 rounded-[2rem] text-center w-full">
+                                        <div className="flex justify-between mb-4 text-slate-900 font-bold">EŞLEŞTİR <button onClick={()=>setShowQr(false)}><Icon name="x" size={20}/></button></div>
+                                        <div ref={qrRef} className="flex justify-center mb-4"></div>
+                                        <p className="text-[10px] text-slate-400 uppercase font-black">Telefon kamerasıyla taratın</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!connection && transferStatus !== 'connecting' ? (
+                                <div className="h-full flex flex-col items-center justify-center space-y-6">
+                                    <Icon name="monitor" size={48} className="text-slate-700" />
+                                    <input 
+                                        value={remoteId} 
+                                        onChange={(e)=>setRemoteId(e.target.value.toUpperCase())}
+                                        placeholder="HEDEF KOD" 
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-center font-mono font-black text-xl text-indigo-400 outline-none" 
+                                    />
+                                    <button onClick={connectToPeer} className="w-full bg-indigo-600 py-4 rounded-2xl font-black uppercase text-sm tracking-widest active:scale-95 transition-all">Bağlan</button>
+                                </div>
+                            ) : (
+                                <div className="h-full">
+                                    {activeTab === 'transfer' && (
+                                        <div className="h-full flex flex-col justify-center space-y-6">
+                                            <div className="bg-slate-950/50 border-2 border-dashed border-slate-800 rounded-[2rem] p-8 text-center">
+                                                {transferStatus === 'completed' && receivedFile ? (
+                                                    <div className="space-y-4">
+                                                        <Icon name="check-circle" size={48} className="text-green-500 mx-auto" />
+                                                        <p className="font-black text-sm text-white truncate px-4">{receivedFile.name}</p>
+                                                        <a href={receivedFile.url} download={receivedFile.name} className="block w-full bg-green-600 py-4 rounded-2xl font-black text-xs uppercase shadow-lg shadow-green-900/40 text-white">Kaydet</a>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-4">
+                                                        <Icon name="file-up" size={48} className="text-indigo-500 mx-auto" />
+                                                        <p className="text-xs text-slate-500 font-bold">"Müdürüm, dosya aktarımı hazır."</p>
+                                                        <input type="file" onChange={sendFile} className="hidden" ref={fileInputRef} />
+                                                        <button onClick={() => fileInputRef.current.click()} className="bg-indigo-600 px-8 py-3 rounded-2xl font-black text-xs uppercase text-white">Dosya Seç</button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {activeTab === 'chat' && (
+                                        <div className="h-full flex flex-col">
+                                            <div className="flex-1 space-y-4 mb-4 overflow-y-auto pr-1">
+                                                {messages.map((m, i) => (
+                                                    <div key={i} className={`flex flex-col ${m.sender === 'me' ? 'items-end' : 'items-start'}`}>
+                                                        <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${m.sender === 'me' ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none'}`}>
+                                                            {m.text}
+                                                        </div>
+                                                        <span className="text-[8px] text-slate-600 mt-1 uppercase font-black">{m.time}</span>
+                                                    </div>
+                                                ))}
+                                                <div ref={chatEndRef} />
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <input value={inputText} onChange={(e)=>setInputText(e.target.value)} onKeyPress={(e)=>e.key === 'Enter' && sendMessage()} placeholder="Mesaj..." className="flex-1 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-bold outline-none text-white" />
+                                                <button onClick={sendMessage} className="bg-indigo-600 p-4 rounded-2xl"><Icon name="send" size={20} className="text-white"/></button>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {activeTab === 'radio' && (
+                                        <div className="h-full flex flex-col items-center justify-center space-y-10">
+                                            <div className="relative">
+                                                <div className={`absolute -inset-10 bg-red-500 rounded-full blur-3xl opacity-20 transition-all duration-300 ${isTalking ? 'opacity-50 scale-125' : 'scale-50'}`}></div>
+                                                <button 
+                                                    onMouseDown={startTalking} onMouseUp={stopTalking} onTouchStart={startTalking} onTouchEnd={stopTalking}
+                                                    className={`relative w-40 h-40 rounded-full flex flex-col items-center justify-center gap-2 border-4 touch-none transition-all active:scale-95 ${isTalking ? 'bg-red-600 border-red-400' : 'bg-slate-800 border-slate-700'}`}
+                                                >
+                                                    <Icon name={isTalking ? 'mic' : 'mic-off'} size={48} className={isTalking ? 'animate-pulse text-white' : 'text-slate-500'} />
+                                                    <span className="text-[10px] font-black text-white">{isTalking ? "YAYINDASIN" : "BAS KONUŞ"}</span>
+                                                </button>
+                                            </div>
+                                            <audio ref={remoteAudioRef} autoPlay />
+                                            <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Kriptolu Ses Hattı Aktif</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 bg-slate-950 flex justify-between items-center px-10 border-t border-slate-800 safe-bottom">
+                            <span className="text-[9px] font-black text-slate-700 uppercase">Secure Node P2P</span>
+                            <span className="text-[9px] font-black text-indigo-900 uppercase">Müdürüm Pro v3.0</span>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+

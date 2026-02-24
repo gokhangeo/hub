@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>Müdürüm Hub - Pro V6.5</title>
+    <title>Operasyon Hub - Pro V6.6</title>
     
     <!-- Kütüphaneler -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -57,6 +57,14 @@
             return <span ref={containerRef} className={`inline-flex items-center justify-center ${className}`} style={{ width: size, height: size }} />;
         };
 
+        const formatBytes = (bytes) => {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        };
+
         const App = () => {
             const [myId, setMyId] = useState('');
             const [remoteId, setRemoteId] = useState('');
@@ -65,10 +73,15 @@
             const [activeTab, setActiveTab] = useState('transfer'); 
             const [messages, setMessages] = useState([]);
             const [inputText, setInputText] = useState('');
-            const [transferStatus, setTransferStatus] = useState('idle'); // idle, connected, sending, receiving, completed, delivered
+            
+            // Transfer States
+            const [transferStatus, setTransferStatus] = useState('idle'); // idle, connected, pending_approval, receiving_offer, sending, receiving, completed, delivered
             const [transferProgress, setTransferProgress] = useState(0);
             const [receivedFile, setReceivedFile] = useState(null);
             const [sentFileName, setSentFileName] = useState('');
+            const [incomingOffer, setIncomingOffer] = useState(null);
+            const [pendingFile, setPendingFile] = useState(null);
+            
             const [showQr, setShowQr] = useState(false);
             const [pairedDevices, setPairedDevices] = useState([]);
             const [toast, setToast] = useState({ show: false, message: '' });
@@ -140,7 +153,7 @@
                     showToast("Bağlantı Sağlandı!");
                     setPairedDevices(prev => {
                         const updated = [conn.peer, ...prev.filter(id => id !== conn.peer)].slice(0, 5);
-                        localStorage.setItem('mudurum_paired_devices', JSON.stringify(updated));
+                        localStorage.setItem('hub_paired_devices', JSON.stringify(updated));
                         return updated;
                     });
                 });
@@ -153,8 +166,25 @@
                         if (navigator.vibrate) navigator.vibrate([500, 200, 500]);
                         playSound(440, 'square', 0.5);
                         setTimeout(() => setIsBuzzing(false), 2000);
-                        showToast("DÜRTÜLDÜNÜZ!");
-                    } else if (data.type === 'file-chunk') {
+                        showToast("ACİL DURUM SİNYALİ!");
+                    } 
+                    // DOSYA ONAY SİSTEMİ MESAJLARI
+                    else if (data.type === 'file-offer') {
+                        setIncomingOffer({ fileId: data.fileId, fileName: data.fileName, fileSize: data.fileSize, fileType: data.fileType });
+                        setTransferStatus('receiving_offer');
+                        showToast("Dosya İsteği Geldi");
+                        if (navigator.vibrate) navigator.vibrate(200);
+                    } else if (data.type === 'file-accept') {
+                        if (pendingFile && pendingFile.fileId === data.fileId) {
+                            startChunking(pendingFile.file, data.fileId);
+                        }
+                    } else if (data.type === 'file-reject') {
+                        setTransferStatus('connected');
+                        setPendingFile(null);
+                        showToast("Karşı taraf dosyayı reddetti.");
+                    }
+                    // DOSYA AKTARIM MESAJLARI
+                    else if (data.type === 'file-chunk') {
                         const { fileId, fileName, fileType, chunk, totalChunks, currentChunk } = data;
                         if (!chunkBuffers.current[fileId]) { 
                             chunkBuffers.current[fileId] = []; 
@@ -168,17 +198,19 @@
                             const blob = new Blob(chunkBuffers.current[fileId], { type: fileType });
                             setReceivedFile({ url: URL.createObjectURL(blob), name: fileName, type: fileType });
                             setTransferStatus('completed');
+                            setIncomingOffer(null);
                             delete chunkBuffers.current[fileId];
-                            // Gönderene "aldım" onayı gönder
                             conn.send({ type: 'file-delivered', fileId });
                             if (navigator.vibrate) navigator.vibrate(200);
                             showToast("Dosya Alındı!");
                         }
                     } else if (data.type === 'file-delivered') {
-                        // Gönderen kişi bu mesajı alır
                         setTransferStatus('delivered');
+                        setPendingFile(null);
                         showToast("Dosya Karşıya Ulaştı!");
-                    } else if (data.type === 'chat' || data.type === 'voice-note') {
+                    } 
+                    // DİĞER MESAJLAR
+                    else if (data.type === 'chat' || data.type === 'voice-note') {
                         setIsRemoteTyping(false);
                         setMessages(prev => [...prev, { id: Date.now(), sender: 'other', text: data.text, audio: data.audio, time: new Date().toLocaleTimeString(), expiry: expiryTime }]);
                         if (activeTab !== 'chat') setUnreadCounts(prev => ({ ...prev, chat: prev.chat + 1 }));
@@ -203,10 +235,10 @@
             };
 
             useEffect(() => {
-                let savedId = localStorage.getItem('mudurum_hub_id') || "MDR-" + Math.random().toString(36).substring(2, 6).toUpperCase();
-                localStorage.setItem('mudurum_hub_id', savedId);
+                let savedId = localStorage.getItem('hub_my_id') || "OP-" + Math.random().toString(36).substring(2, 6).toUpperCase();
+                localStorage.setItem('hub_my_id', savedId);
                 setMyId(savedId);
-                setPairedDevices(JSON.parse(localStorage.getItem('mudurum_paired_devices') || '[]'));
+                setPairedDevices(JSON.parse(localStorage.getItem('hub_paired_devices') || '[]'));
 
                 const newPeer = new window.Peer(savedId, { config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }] } });
                 newPeer.on('open', () => {
@@ -248,7 +280,7 @@
 
             const stopRecording = () => { if (mediaRecorderRef.current && isRecording) { mediaRecorderRef.current.stop(); setIsRecording(false); playSound(440, 'sine', 0.05); } };
 
-            const sendBuzz = () => { if (!connection) return; connection.send({ type: 'buzz' }); showToast("Dürtme Atıldı"); if (navigator.vibrate) navigator.vibrate(200); };
+            const sendBuzz = () => { if (!connection) return; connection.send({ type: 'buzz' }); showToast("Sinyal Gönderildi"); if (navigator.vibrate) navigator.vibrate(200); };
 
             const drawOnCanvas = (x, y, isNewPath, isLocal) => {
                 const canvas = canvasRef.current; if (!canvas) return;
@@ -280,24 +312,70 @@
             const shareLink = async () => {
                 const shareUrl = `${window.location.origin}${window.location.pathname}?join=${myId}`;
                 if (navigator.share && /Android|iPhone|iPad/i.test(navigator.userAgent)) {
-                    try { await navigator.share({ title: 'Hub Pro', url: shareUrl }); } catch (err) { navigator.clipboard.writeText(shareUrl); showToast("Link Kopyalandı!"); }
+                    try { await navigator.share({ title: 'Güvenli Bağlantı', url: shareUrl }); } catch (err) { navigator.clipboard.writeText(shareUrl); showToast("Link Kopyalandı!"); }
                 } else { navigator.clipboard.writeText(shareUrl); showToast("Link Kopyalandı!"); }
             };
 
-            const sendFile = async (e) => {
-                const file = e.target.files[0]; if (!file || !connection) return;
+            // DOSYA GÖNDERİM TEKLİFİ
+            const handleFileSelect = (e) => {
+                const file = e.target.files[0]; 
+                if (!file || !connection) return;
+                
+                const fileId = Math.random().toString(36).substring(7);
                 setSentFileName(file.name);
+                setPendingFile({ file, fileId });
+                setTransferStatus('pending_approval');
+                
+                // Karşıya teklif yolla
+                connection.send({
+                    type: 'file-offer',
+                    fileId: fileId,
+                    fileName: file.name,
+                    fileSize: file.size,
+                    fileType: file.type
+                });
+            };
+
+            // ASIL DOSYA GÖNDERİMİ (Kabul Edilince Çalışır)
+            const startChunking = async (file, fileId) => {
                 setTransferStatus('sending');
                 setTransferProgress(0);
-                const chunkSize = 64 * 1024; const totalChunks = Math.ceil(file.size / chunkSize);
-                const fileId = Math.random().toString(36).substring(7);
+                
+                const chunkSize = 128 * 1024; // 128KB - Videolar için daha büyük paketler, donmayı önler
+                const totalChunks = Math.ceil(file.size / chunkSize);
+                
                 for (let i = 0; i < totalChunks; i++) {
                     const chunk = file.slice(i * chunkSize, Math.min(file.size, (i + 1) * chunkSize));
-                    connection.send({ type: 'file-chunk', fileId, fileName: file.name, fileType: file.type, chunk: await chunk.arrayBuffer(), totalChunks, currentChunk: i });
+                    const buffer = await chunk.arrayBuffer();
+                    
+                    if (!activeConnRef.current) break; // Bağlantı koptuysa dur
+
+                    activeConnRef.current.send({ 
+                        type: 'file-chunk', fileId, fileName: file.name, fileType: file.type, 
+                        chunk: buffer, totalChunks, currentChunk: i 
+                    });
+                    
                     setTransferProgress(Math.round(((i + 1) / totalChunks) * 100));
-                    if (i % 12 === 0) await new Promise(r => setTimeout(r, 1));
+                    
+                    // Tarayıcının şişmesini engellemek için küçük bir bekleme (ÖNEMLİ)
+                    await new Promise(r => setTimeout(r, 5)); 
                 }
-                // Gönderim bitti ama karşı tarafın birleştirmesi bekleniyor (delivered durumu bekleniyor)
+            };
+
+            // ALICI ONAYLARI
+            const acceptFile = () => {
+                if (!connection || !incomingOffer) return;
+                connection.send({ type: 'file-accept', fileId: incomingOffer.fileId });
+                setTransferStatus('receiving');
+                showToast("Aktarım Başlıyor...");
+            };
+
+            const rejectFile = () => {
+                if (!connection || !incomingOffer) return;
+                connection.send({ type: 'file-reject', fileId: incomingOffer.fileId });
+                setIncomingOffer(null);
+                setTransferStatus('connected');
+                showToast("Dosya Reddedildi.");
             };
 
             useEffect(() => {
@@ -317,7 +395,7 @@
                                 <div className="flex items-center gap-2">
                                     <div className={`w-3 h-3 rounded-full ${connection ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-slate-700'}`}></div>
                                     <div className="flex flex-col">
-                                        <h1 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Hub v6.5 PRO</h1>
+                                        <h1 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">SİSTEM v6.6 PRO</h1>
                                         <span className="text-[7px] text-slate-500 font-bold uppercase">{connection ? 'HATTAYIZ' : 'SİNYAL BEKLENİYOR'}</span>
                                     </div>
                                 </div>
@@ -380,9 +458,38 @@
                                 </div>
                             ) : (
                                 <div className="h-full relative overflow-hidden">
+                                    {/* DOSYA SEKME */}
                                     <div className={`h-full overflow-y-auto p-6 flex flex-col justify-center space-y-6 text-center ${activeTab === 'transfer' ? 'block' : 'hidden'}`}>
                                         <div className="bg-slate-950/50 border-2 border-dashed border-slate-800 rounded-[2.5rem] p-8 shadow-inner">
-                                            {(transferStatus === 'sending' || transferStatus === 'receiving') ? (
+                                            
+                                            {/* DOSYA ONAY BEKLENİYOR (Gönderen) */}
+                                            {transferStatus === 'pending_approval' ? (
+                                                <div className="space-y-6 animate-in zoom-in duration-300">
+                                                    <Icon name="clock" size={56} className="text-amber-500 mx-auto animate-pulse" />
+                                                    <p className="font-black text-[10px] text-white uppercase">Karşı Tarafın Onayı Bekleniyor...</p>
+                                                    <p className="text-slate-500 text-[10px] truncate px-4">{sentFileName}</p>
+                                                    <button onClick={() => {setTransferStatus('connected'); setPendingFile(null); connection.send({type: 'file-reject', fileId: pendingFile.fileId});}} className="text-[9px] text-red-500 font-black uppercase underline">İptal Et</button>
+                                                </div>
+                                            ) : 
+                                            
+                                            /* DOSYA ONAYI GELDİ (Alıcı) */
+                                            transferStatus === 'receiving_offer' && incomingOffer ? (
+                                                <div className="space-y-6 animate-in zoom-in duration-300 bg-slate-900 border border-indigo-500/30 p-6 rounded-[2rem]">
+                                                    <Icon name="file-question" size={48} className="text-indigo-400 mx-auto" />
+                                                    <div>
+                                                        <p className="font-black text-white text-xs mb-1">GELEN DOSYA VAR</p>
+                                                        <p className="text-[10px] text-slate-400 truncate px-2">{incomingOffer.fileName}</p>
+                                                        <p className="text-[11px] font-bold text-indigo-400 mt-2">{formatBytes(incomingOffer.fileSize)}</p>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <button onClick={rejectFile} className="flex-1 bg-slate-800 text-slate-300 py-3 rounded-xl font-black text-[10px] uppercase">Reddet</button>
+                                                        <button onClick={acceptFile} className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-black text-[10px] uppercase shadow-lg shadow-indigo-600/30">Kabul Et</button>
+                                                    </div>
+                                                </div>
+                                            ) :
+
+                                            /* AKTARIM DURUMLARI */
+                                            (transferStatus === 'sending' || transferStatus === 'receiving') ? (
                                                 <div className="space-y-6">
                                                     <div className="text-[2.5rem] font-black text-indigo-500">%{transferProgress}</div>
                                                     <p className="text-[10px] font-black text-indigo-400 animate-pulse uppercase tracking-[0.4em]">
@@ -403,6 +510,7 @@
                                             ) : receivedFile ? (
                                                 <div className="space-y-6 animate-in zoom-in duration-300">
                                                     {receivedFile.type.startsWith('image/') && <img src={receivedFile.url} className="w-full h-40 object-contain rounded-2xl bg-black" />}
+                                                    {receivedFile.type.startsWith('video/') && <video src={receivedFile.url} controls className="w-full h-40 rounded-2xl bg-black" />}
                                                     <Icon name="check-circle" size={40} className="text-green-500 mx-auto" />
                                                     <p className="font-black text-[10px] text-white truncate px-4">{receivedFile.name}</p>
                                                     <a href={receivedFile.url} download={receivedFile.name} className="block w-full bg-green-600 py-4 rounded-2xl font-black text-xs text-white uppercase shadow-lg">KAYDET</a>
@@ -411,13 +519,15 @@
                                             ) : (
                                                 <div className="space-y-6">
                                                     <Icon name="file-up" size={56} className="text-indigo-500/20 mx-auto" />
-                                                    <input type="file" onChange={sendFile} className="hidden" ref={fileInputRef} />
+                                                    <p className="text-[10px] text-slate-500 font-bold px-4 uppercase italic">"Veri aktarımı için hazırız."</p>
+                                                    <input type="file" onChange={handleFileSelect} className="hidden" ref={fileInputRef} />
                                                     <button onClick={() => fileInputRef.current.click()} className="bg-indigo-600 px-10 py-4 rounded-2xl font-black text-xs text-white uppercase">DOSYA SEÇ</button>
                                                 </div>
                                             )}
                                         </div>
                                     </div>
 
+                                    {/* PLAN SEKME */}
                                     <div className={`h-full flex flex-col p-4 space-y-4 ${activeTab === 'sketch' ? 'block' : 'hidden'}`}>
                                         <div className="flex-1 bg-slate-950 rounded-[2rem] border border-slate-800 overflow-hidden relative shadow-inner">
                                             <canvas ref={canvasRef} width={350} height={450} onMouseDown={handleCanvasInteraction} onMouseMove={handleCanvasInteraction} onTouchStart={handleCanvasInteraction} onTouchMove={handleCanvasInteraction} className="w-full h-full" />
@@ -426,6 +536,7 @@
                                         </div>
                                     </div>
 
+                                    {/* MESAJ SEKME */}
                                     <div className={`h-full p-6 flex flex-col ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
                                         <div className="flex-1 space-y-4 mb-4 overflow-y-auto pr-1 scroll-smooth">
                                             {messages.map((m) => (
@@ -455,9 +566,12 @@
 
                         {toast.show && <div className="absolute bottom-24 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-2xl z-[100] toast-active">{toast.message}</div>}
 
-                        <div className="p-4 bg-slate-950 flex justify-between items-center px-10 border-t border-slate-800 shrink-0 safe-bottom">
-                            <span className="text-[8px] font-black text-slate-800 uppercase italic tracking-widest">Delivery Report Node v6.5</span>
-                            <span className="text-[9px] font-black text-indigo-950 uppercase italic tracking-tighter">MÜDÜRÜM PRO</span>
+                        <div className="p-4 bg-slate-950 flex justify-between items-center px-6 border-t border-slate-800 shrink-0 safe-bottom">
+                            <span className="text-[8px] font-black text-slate-800 uppercase italic tracking-widest">Secure Node v6.6</span>
+                            <div className="text-right">
+                                <span className="text-[9px] font-black text-indigo-950 uppercase italic tracking-tighter block">SİSTEM PRO</span>
+                                <div className="text-[7px] mt-1 text-slate-600 opacity-50">© Gökhan ELGÜL tarafından tasarlanmıştır.</div>
+                            </div>
                         </div>
                     </div>
                 </div>

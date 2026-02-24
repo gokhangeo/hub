@@ -520,7 +520,7 @@
                                                 <div className="space-y-6">
                                                     <Icon name="file-up" size={56} className="text-indigo-500/20 mx-auto" />
                                                     <p className="text-[10px] text-slate-500 font-bold px-4 uppercase italic">"Veri aktarımı için hazırız."</p>
-                                                    <input type="file" onChange={handleFileSelect} className="hidden" ref={fileInputRef} />
+                                                    <input type="file" onChange={handleFileSelect} className="hidden" ref={fileInputRef} accept="*/*, .pdf, .doc, .docx, .xls, .xlsx, .zip, .rar, .txt" />
                                                     <button onClick={() => fileInputRef.current.click()} className="bg-indigo-600 px-10 py-4 rounded-2xl font-black text-xs text-white uppercase">DOSYA SEÇ</button>
                                                 </div>
                                             )}

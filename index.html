@@ -82,7 +82,6 @@
             const activeConnRef = useRef(null);
             const pendingFileRef = useRef(null);
 
-            // GÜNCELLEME: Sabit GitHub URL'nizi kullanıyoruz
             const getShareUrl = () => {
                 return `https://gokhangeo.github.io/hub/?join=${myId}`;
             };
@@ -142,7 +141,8 @@
                         }
                         chunkBuffers.current[fileId][currentChunk] = chunk;
                         
-                        if (currentChunk % 10 === 0 || currentChunk === totalChunks - 1) {
+                        // %0'da donmayı önlemek için arayüzü her 20 parçada bir güncelle (Performans)
+                        if (currentChunk % 20 === 0 || currentChunk === totalChunks - 1) {
                             setTransferProgress(Math.round(((currentChunk + 1) / totalChunks) * 100));
                         }
                         
@@ -238,7 +238,8 @@
                 setTransferStatus('sending');
                 setTransferProgress(0);
                 
-                const chunkSize = 128 * 1024; 
+                // %0'da Kalma Çözümü: WebRTC kanalları büyük paketleri düşürür. 32KB garanti teslimattır.
+                const chunkSize = 32 * 1024; 
                 const totalChunks = Math.ceil(file.size / chunkSize);
                 
                 for (let i = 0; i < totalChunks; i++) {
@@ -256,8 +257,13 @@
                         chunk: buffer, totalChunks, currentChunk: i 
                     });
                     
-                    if (i % 5 === 0 || i === totalChunks - 1) setTransferProgress(Math.round(((i + 1) / totalChunks) * 100));
-                    await new Promise(r => setTimeout(r, 5)); 
+                    // UI'ı yormamak için her 20 pakette bir güncelleme
+                    if (i % 20 === 0 || i === totalChunks - 1) {
+                        setTransferProgress(Math.round(((i + 1) / totalChunks) * 100));
+                    }
+                    
+                    // Ağın tıkanmaması için mini mola
+                    await new Promise(r => setTimeout(r, 2)); 
                 }
             };
 
@@ -513,7 +519,7 @@
                                                         <h3 className="font-black text-white uppercase text-sm tracking-widest mb-2">Dosya Gönder</h3>
                                                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Fotoğraf, Video veya Belge</p>
                                                     </div>
-                                                    <input type="file" onChange={handleFileSelect} className="hidden" ref={fileInputRef} accept="*/*" />
+                                                    <input type="file" onChange={handleFileSelect} className="hidden" ref={fileInputRef} accept="*/*, .pdf, .doc, .docx, .xls, .xlsx, .zip, .rar, .txt, .mp4, .mov, .avi" />
                                                     <button onClick={() => fileInputRef.current.click()} className="w-full bg-indigo-600 py-4 rounded-2xl font-black text-xs text-white uppercase shadow-xl shadow-indigo-600/20 hover:bg-indigo-500 active:scale-95 transition-all tracking-widest">Dosya Seç</button>
                                                 </div>
                                             )}
@@ -525,7 +531,7 @@
 
                         {/* Alt Bilgi */}
                         <div className="p-5 bg-slate-950 flex justify-between items-center border-t border-slate-800 shrink-0 safe-bottom">
-                            <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Sistem v7.3 Pro</span>
+                            <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Sistem v7.4 Pro</span>
                             <span className="text-[9px] font-bold text-slate-600">© Gökhan ELGÜL tarafından tasarlanmıştır.</span>
                         </div>
 

@@ -1,554 +1,1145 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="tr" class="scroll-smooth">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>Güvenli Dosya Merkezi</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cihazlar Arası Dosya Transferi - P2P</title>
+  
+  <!-- Tailwind CSS - En güncel Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Font Tasarımı: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+          },
+        }
+      }
+    }
+  </script>
+
+  <!-- PeerJS - Doğrudan ve Hızlı WebRTC Sinyalleşme Kütüphanesi -->
+  <script src="https://unpkg.com/peerjs@latest/dist/peerjs.min.js"></script>
+  
+  <!-- QRCode.js - QR Kod Üretimi için -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@latest/build/qrcode.min.js"></script>
+  
+  <!-- Html5-Qrcode - Kameralı QR Kod Okuma ve Görsel Analiz Kütüphanesi -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  
+  <!-- Lucide Modern İkon Seti -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    /* Özel Fade Giriş Animasyonu */
+    .fade-in {
+      animation: fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
     
-    <!-- Kütüphaneler -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-
-    <style>
-        body { background-color: #020617; margin: 0; overflow: hidden; -webkit-tap-highlight-color: transparent; font-family: system-ui, -apple-system, sans-serif; }
-        .no-select { user-select: none; -webkit-user-select: none; }
-        .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
-        #root:empty { display: flex; align-items: center; justify-content: center; height: 100vh; color: #6366f1; font-weight: bold; }
-        
-        .fade-in { animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
-
-        .toast-active { transform: translateY(0); opacity: 1; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-        
-        .progress-ring__circle { transition: stroke-dashoffset 0.3s ease-in-out; transform: rotate(-90deg); transform-origin: 50% 50%; }
-        
-        /* Şık Scrollbar */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 6px; }
-    </style>
+    /* Neon Efektler ve Pulsing */
+    .glow-active {
+      box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+    }
+    
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+    .dark ::-webkit-scrollbar-thumb {
+      background: #475569;
+    }
+  </style>
 </head>
-<body>
-    <div id="root">SİSTEM BAŞLATILIYOR...</div>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-sans transition-colors duration-300 min-h-screen flex flex-col selection:bg-indigo-500 selection:text-white">
 
-    <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+  <!-- Üst Menü ve Başlık -->
+  <header class="border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md sticky top-0 z-40 transition-colors duration-300">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/20">
+          <i data-lucide="zap" class="w-5 h-5 fill-indigo-100"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight">Bulutsuz Transfer</h1>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Sunucusuz, Doğrudan Uçtan Uca P2P Dosya Paylaşımı</p>
+        </div>
+      </div>
+      
+      <!-- Temalar ve Kontroller -->
+      <div class="flex items-center gap-2">
+        <button id="theme-toggle" class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 transition-all text-slate-600 dark:text-slate-350 cursor-pointer" title="Tema Değiştir">
+          <i data-lucide="sun" id="theme-sun-icon" class="w-4 h-4 hidden"></i>
+          <i data-lucide="moon" id="theme-moon-icon" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+  </header>
 
-        const Icon = ({ name, size = 20, className = "" }) => {
-            const containerRef = useRef(null);
-            useEffect(() => {
-                if (window.lucide && containerRef.current) {
-                    containerRef.current.innerHTML = `<i data-lucide="${name}"></i>`;
-                    window.lucide.createIcons({ attrs: { width: size, height: size, class: className, 'stroke-width': 2 } });
-                }
-            }, [name, size, className]);
-            return <span ref={containerRef} className={`inline-flex items-center justify-center ${className}`} style={{ width: size, height: size }} />;
+  <!-- Ana İçerik -->
+  <main class="flex-grow max-w-6xl mx-auto px-4 py-8 w-full">
+    
+    <!-- Genel Durum Şeridi -->
+    <div id="status-ribbon" class="mb-6 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 flex items-center justify-between transition-all duration-300 shadow-sm">
+      <div class="flex items-center gap-3">
+        <div class="relative flex h-3 w-3">
+          <span id="status-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+          <span id="status-dot" class="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
+        </div>
+        <div>
+          <span class="text-xs uppercase tracking-wider font-mono text-slate-400 block font-semibold leading-none">Bağlantı Durumu</span>
+          <span id="status-text" class="text-sm font-semibold text-slate-600 dark:text-slate-300">Hazırlanıyor...</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span id="peer-count-pill" class="hidden text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400 px-3 py-1 rounded-full font-medium flex items-center gap-1">
+          <i data-lucide="users" class="w-3.5 h-3.5"></i>
+          <span>Cihaz Bağlandı</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- İki Sütunlu Grid Sürümü -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      
+      <!-- SOL SÜTUN: Bu Cihazın Kimliği ve QR Kodu (lg:col-span-12 veya 5) -->
+      <section class="lg:col-span-5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm transition-all">
+        <div class="flex items-center gap-2.5 mb-5">
+          <i data-lucide="id-card" class="w-5 h-5 text-indigo-500"></i>
+          <h2 class="text-md font-bold tracking-tight">1. Senin Cihaz Bilgilerin</h2>
+        </div>
+        
+        <div class="flex flex-col items-center text-center">
+          <!-- QR Kodu Container -->
+          <div class="relative bg-slate-100 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-4 rounded-2xl w-48 h-48 flex items-center justify-center mb-4 transition-all">
+            <div id="qrcode-spinner" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-50/90 dark:bg-slate-950/90 rounded-2xl z-10 transition-all duration-300">
+              <div class="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin mb-2"></div>
+              <span class="text-xs text-slate-500">QR Kod Üretiliyor</span>
+            </div>
+            <canvas id="qrcode-canvas" class="hidden max-w-full rounded-md shadow-sm"></canvas>
+          </div>
+
+          <p class="text-xs text-slate-500 dark:text-slate-400 mb-4 max-w-xs">
+            Diğer cihazın kamerasıyla bu QR kodu taratabilir veya aşağıdaki 6 haneli kodu doğrudan girebilirsiniz.
+          </p>
+
+          <div class="w-full flex items-center gap-2 bg-slate-100 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800/60 p-1.5 rounded-xl max-w-xs mb-3">
+            <span class="text-xs text-slate-400 font-mono tracking-wider pl-3 uppercase">KOD:</span>
+            <div id="device-id-field" class="text-base font-mono font-bold text-center flex-grow text-slate-700 dark:text-indigo-300 select-all leading-none py-1 tracking-[0.1em]">------</div>
+            <button id="copy-id-btn" class="p-2 bg-white dark:bg-slate-800 shadow-sm border border-slate-200/50 dark:border-slate-700 rounded-lg hover:text-indigo-500 active:scale-95 transition-all text-slate-600 dark:text-slate-300 cursor-pointer" title="Kodu Kopyala">
+              <i data-lucide="copy" class="w-4 h-4"></i>
+            </button>
+          </div>
+          
+          <button id="share-link-btn" class="text-xs text-indigo-600 dark:text-indigo-400 font-medium hover:underline flex items-center gap-1.5 cursor-pointer">
+            <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+            <span>Paylaşım Linkini Kopyala</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- SAĞ SÜTUN: Karşı Cihaza Bağlanma Paneli (lg:col-span-7) -->
+      <section class="lg:col-span-7 space-y-6">
+        
+        <!-- BAĞLANMA FORMU CARD -->
+        <div id="connect-card" class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm transition-all duration-300">
+          <div class="flex items-center gap-2.5 mb-5">
+            <i data-lucide="arrow-left-right" class="w-5 h-5 text-indigo-500"></i>
+            <h2 class="text-md font-bold tracking-tight">2. Diğer Cihaza Bağlan</h2>
+          </div>
+
+          <div class="space-y-4">
+            <!-- 6 Haneli Kod ile Bağlanma -->
+            <div>
+              <label for="peer-id-input" class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Hedef Cihaz Kodu</label>
+              <div class="flex items-center gap-2">
+                <input type="text" id="peer-id-input" maxlength="6" placeholder="Kodu girin (örn. 531248)" class="flex-grow bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-800 rounded-xl px-4 py-3 text-sm font-mono font-bold tracking-[0.2em] focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-center select-all placeholder:tracking-normal placeholder:font-sans uppercase">
+                <button id="connect-btn" class="shadow-sm py-3 px-6 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap min-w-[120px]">
+                  <i data-lucide="link" class="w-4 h-4"></i>
+                  <span>Bağlan</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Alternatif QR Taramalar -->
+            <div class="grid grid-cols-2 gap-3 pt-2">
+              <!-- Canlı Kamera Tara -->
+              <button id="open-cam-btn" class="flex items-center justify-center gap-2 p-3 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold hover:bg-indigo-50 hover:border-indigo-200 dark:hover:bg-indigo-950/20 dark:hover:border-indigo-900 transition-all text-indigo-600 dark:text-indigo-400 cursor-pointer">
+                <i data-lucide="camera" class="w-4 h-4"></i>
+                <span>QR Oku (Kamera)</span>
+              </button>
+              
+              <!-- QR Görseli Yükle -->
+              <div class="relative">
+                <input type="file" id="qr-file-input" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+                <button type="button" class="pointer-events-none w-full flex items-center justify-center gap-2 p-3 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-750 transition-all text-slate-600 dark:text-slate-300">
+                  <i data-lucide="image" class="w-4 h-4"></i>
+                  <span>QR Yükle (Dosya)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- DOSYA GÖNDERME CARD (Bağlandıktan Sonra Aktif Olur) -->
+        <div id="transfer-card" class="bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm filter grayscale opacity-45 pointer-events-none transition-all duration-300">
+          <div class="flex items-center justify-between mb-5">
+            <div class="flex items-center gap-2.5">
+              <i data-lucide="folder-up" class="w-5 h-5 text-indigo-500"></i>
+              <h2 class="text-md font-bold tracking-tight">3. Dosya Gönder</h2>
+            </div>
+            <span class="text-xs bg-indigo-100 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-400 px-2.5 py-1 rounded-md font-mono hidden" id="target-id-indicator">Alıcı: ----</span>
+          </div>
+
+          <!-- Sürükle Bırak Bölgesi -->
+          <div id="drop-zone" class="border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-300 bg-slate-50/50 dark:bg-slate-900/30">
+            <input type="file" id="file-selector" multiple class="hidden">
+            
+            <div class="w-12 h-12 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center mb-3">
+              <i data-lucide="upload-cloud" class="w-6 h-6 animate-bounce"></i>
+            </div>
+            
+            <h3 class="text-sm font-semibold mb-1">Gönderilecek Dosyaları Seçin</h3>
+            <p class="text-xs text-slate-400 max-w-sm mb-4">Masaüstünden dosyaları buraya sürükleyebilirsiniz. Sınırsız dosya boyutu!</p>
+            
+            <button type="button" class="shadow-sm py-2 px-5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-755 text-xs font-semibold rounded-lg transition-colors cursor-pointer text-slate-700 dark:text-slate-300">
+              Dosyalara Göz At
+            </button>
+          </div>
+        </div>
+
+        <!-- GÜNCEL TRANSFERLER PANELI (Aktif veya Bitmiş Gönderiler) -->
+        <div id="active-transfers-container" class="hidden bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
+          <div class="flex items-center justify-between mb-5">
+            <div class="flex items-center gap-2.5">
+              <i data-lucide="activity" class="w-5 h-5 text-indigo-500"></i>
+              <h2 class="text-md font-bold tracking-tight">Aktif Paylaşımlar</h2>
+            </div>
+            <button id="clear-finished-btn" class="text-xs text-slate-400 hover:text-slate-600 hover:underline flex items-center gap-1 cursor-pointer leading-none">
+              <i data-lucide="trash-2" class="w-3 h-3"></i>
+              <span>Temizle</span>
+            </button>
+          </div>
+          
+          <div id="transfer-list" class="space-y-4">
+            <!-- Transfer kartları JS ile buraya yerleştirilecek -->
+          </div>
+        </div>
+
+      </section>
+    </div>
+  </main>
+
+  <!-- QR KAMERA TARAYICI DIALOG MODAL -->
+  <div id="reader-box" class="hidden fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-md overflow-hidden relative border border-slate-200 dark:border-slate-700 shadow-2xl fade-in">
+      <div class="p-5 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between bg-slate-50 dark:bg-slate-850">
+        <h3 class="text-sm font-bold flex items-center gap-2">
+          <i data-lucide="qr-code" class="w-4 h-4 text-indigo-500"></i>
+          <span>Kameradan QR Tara</span>
+        </h3>
+        <button id="close-cam-btn" class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 active:scale-95 transition-all cursor-pointer">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      
+      <!-- Kamera Akış Bölgesi -->
+      <div class="p-6">
+        <div class="bg-black/5 dark:bg-black/30 rounded-2xl overflow-hidden aspect-square border border-slate-200/50 dark:border-slate-700 w-full relative">
+          <!-- Kamera akışı için div -->
+          <div id="reader" class="overflow-hidden w-full h-full rounded-2xl"></div>
+          
+          <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 bg-red-500 pointer-events-none animate-pulse"></div>
+        </div>
+        <p class="text-[11px] text-slate-400 text-center mt-3">Kameranızın izin verdiğinden emin olun. QR kod otomatik olarak saptanacaktır.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ALT BİLGİ VE YAZIŞMA DURUMU -->
+  <footer class="mt-auto border-t border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 py-6 text-center text-xs text-slate-400">
+    <div class="max-w-6xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-3">
+      <div>
+        <span>© 2026 Bulutsuz Transfer. Güvenli WebRTC P2P Teknolojisi ile çalışır.</span>
+      </div>
+      <div class="flex items-center gap-4">
+        <span class="flex items-center gap-1">
+          <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-500"></i>
+          <span>Dosyalar hiçbir sunucuya uğramaz</span>
+        </span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- QR Çözümü İçin Görünmez Geçici Div (html5-qrcode dosya okuma zorunluluğu) -->
+  <div id="reader-temp-div" class="hidden"></div>
+
+  <!-- TOAST BİLDİRİM MOTORU -->
+  <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2.5 max-w-sm pointer-events-none"></div>
+
+  <!-- JAVASCRIPT ÇALIŞMA MOTORU -->
+  <script>
+    // --- 1. STATE & GLOBAL TANIMLAMALAR ---
+    let myPeer = null;
+    let myId = '';
+    let currentConnection = null; // WebRTC Veri Kanalı Bağlantısı
+    let isDark = localStorage.getItem('theme') === 'dark';
+    let html5QrCode = null; // Kamera Nesnesi
+    let activeInboundTransfers = {}; // Gelen dosya aktarımlarının kütüphanesi
+    let activeOutboundTransfers = {}; // Giden dosya aktarımlarının kütüphanesi
+    
+    // WebRTC Aktarım Sabitleri
+    const CHUNK_SIZE = 16 * 1024; // 16KB Güvenli WebRTC veri paketi
+    const MAX_BUFFERED_AMOUNT = 512 * 1024; // WebRTC Gönderim Sırası Limiti (512KB)
+
+    // Sayfa Yüklendiğinde Başlat
+    window.addEventListener('DOMContentLoaded', () => {
+      initTheme();
+      initPeerJS();
+      bindEvents();
+      checkUrlJoin();
+      lucide.createIcons();
+    });
+
+    // --- 2. TEMA VE GÖRSEL KONTROLLER ---
+    function initTheme() {
+      // Varsayılan koyu/açık seçimi
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+        document.getElementById('theme-sun-icon').classList.remove('hidden');
+        document.getElementById('theme-moon-icon').classList.add('hidden');
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.getElementById('theme-sun-icon').classList.add('hidden');
+        document.getElementById('theme-moon-icon').classList.remove('hidden');
+      }
+    }
+
+    function toggleTheme() {
+      isDark = !isDark;
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      initTheme();
+    }
+
+    // --- 3. TOAST BİLDİRİMLERİ ---
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `p-4 rounded-xl flex items-center gap-3 bg-white dark:bg-slate-800 border shadow-lg transition-all duration-300 scale-90 opacity-0 pointer-events-auto max-w-xs`;
+      
+      let iconColor = 'text-blue-500';
+      let iconName = 'info';
+      let borderColor = 'border-slate-100 dark:border-slate-700';
+
+      if (type === 'success') {
+        iconColor = 'text-emerald-500';
+        iconName = 'circle-check';
+        borderColor = 'border-emerald-100 dark:border-emerald-800';
+      } else if (type === 'error') {
+        iconColor = 'text-rose-500';
+        iconName = 'alert-triangle';
+        borderColor = 'border-rose-100 dark:border-rose-800';
+      } else if (type === 'warning') {
+        iconColor = 'text-amber-500';
+        iconName = 'alert-octagon';
+        borderColor = 'border-amber-100 dark:border-amber-800';
+      }
+
+      toast.className += ` ${borderColor}`;
+      toast.innerHTML = `
+        <div class="${iconColor}">
+          <i data-lucide="${iconName}" class="w-5 h-5"></i>
+        </div>
+        <div class="flex-grow">
+          <p class="text-xs font-semibold leading-relaxed text-slate-700 dark:text-slate-200">${message}</p>
+        </div>
+      `;
+
+      container.appendChild(toast);
+      lucide.createIcons();
+
+      // Animasyonla göster
+      setTimeout(() => {
+        toast.classList.remove('scale-90', 'opacity-0');
+        toast.classList.add('scale-100', 'opacity-100');
+      }, 50);
+
+      // 4 Saniye sonra yavaşça gizle ve yok et
+      setTimeout(() => {
+        toast.classList.remove('scale-100', 'opacity-100');
+        toast.classList.add('scale-90', 'opacity-0');
+        setTimeout(() => {
+          toast.remove();
+        }, 300);
+      }, 4000);
+    }
+
+    // --- 4. PEERJS BAĞLANTISI VE SİNYAL SÜRECİ ---
+    function initPeerJS() {
+      // 6 haneli benzersiz, akılda kalıcı sayısal ID oluşturma
+      const generatedId = Math.floor(100000 + Math.random() * 900000).toString();
+      updateStatus('Sinyalleşme sunucusuna bağlanıyor...', 'idle');
+
+      // Ücretsiz ve Açık PeerJS Broker Bulut Hizmeti
+      myPeer = new Peer(generatedId, {
+        debug: 1,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' }
+          ]
+        }
+      });
+
+      // PeerJS Sinyalleşme Sunucusuna Kayıt Tamamlandığında
+      myPeer.on('open', (id) => {
+        myId = id;
+        document.getElementById('device-id-field').innerText = id;
+        updateStatus('Hazır. Bağlantı bekleniyor.', 'active');
+        generateIDQRCode();
+        
+        // Eğer URL'den gelen bir bağlantı talebi varsa ve sinyalleşme hazırsa bağlanmayı dene
+        const urlParams = new URLSearchParams(window.location.search);
+        const joinId = urlParams.get('join');
+        if (joinId && joinId !== id) {
+          showToast(`QR/Link üzerinden hedef cihaz tespit edildi: ${joinId}. Bağlanılıyor...`, 'info');
+          document.getElementById('peer-id-input').value = joinId;
+          connectToPeer(joinId);
+        }
+      });
+
+      // Dışarıdan Gelen WebRTC Bağlantı İsteklerinde
+      myPeer.on('connection', (conn) => {
+        if (currentConnection) {
+          // Zaten bağlıysa, yeni bağlantıyı reddetmek yerine mevcut bağlantıyı devralılsın
+          showToast('Yeni bir cihaz bağlantıyı devraldı.', 'info');
+          closeActiveConnection(false);
+        }
+        setupConnection(conn);
+      });
+
+      // Kritik Hataları Dinle
+      myPeer.on('error', (err) => {
+        console.error('PeerJS Hatası: ', err.type, err);
+        
+        if (err.type === 'id-taken') {
+          // Kod çakışması durumunda yeni ID ile tekrar dene
+          initPeerJS();
+        } else if (err.type === 'peer-unavailable') {
+          showToast('Belirttiğiniz kimliğe ait bir cihaz bulunamadı. Kodu kontrol edip tekrar deneyin.', 'error');
+          updateStatus('Bağlantı Başarısız. Hazır.', 'active');
+          resetConnectionUI();
+        } else if (err.type === 'network') {
+          showToast('İnternet bağlantınızı kontrol edin. Sinyal sunucusuna erişilemedi.', 'warning');
+          updateStatus('Bağlantı Yok', 'error');
+        } else {
+          showToast(`Sinyalleşme hatası: ${err.message}`, 'error');
+        }
+      });
+
+      myPeer.on('disconnected', () => {
+        updateStatus('Sinyal Sunucusu ile Bağlantı Kesildi', 'warning');
+        // Havuzda hala yaşıyorsak, tekrar bağlanmayı deneyebiliriz
+        myPeer.reconnect();
+      });
+    }
+
+    // QR Kod Oluşturma Motoru
+    function generateIDQRCode() {
+      const qrcodeCanvas = document.getElementById('qrcode-canvas');
+      const spinner = document.getElementById('qrcode-spinner');
+      
+      const shareUrl = `${window.location.origin}${window.location.pathname}?join=${myId}`;
+      
+      QRCode.toCanvas(qrcodeCanvas, shareUrl, {
+        width: 172,
+        margin: 1,
+        color: {
+          dark: '#312e81', // Koyu İndigo rengi
+          light: '#ffffff'
+        }
+      }, function (err) {
+        if (err) {
+          console.error(err);
+          spinner.innerHTML = '<span class="text-xs text-rose-500">QR üretilemedi</span>';
+        } else {
+          spinner.classList.add('hidden');
+          qrcodeCanvas.classList.remove('hidden');
+        }
+      });
+    }
+
+    // Sinyalleşme ve Durum Göstergesi Güncellemesi
+    function updateStatus(text, type) {
+      const ping = document.getElementById('status-ping');
+      const dot = document.getElementById('status-dot');
+      const textNode = document.getElementById('status-text');
+      const ribbon = document.getElementById('status-ribbon');
+
+      textNode.innerText = text;
+
+      // Reset renkleri
+      ping.className = 'absolute inline-flex h-full w-full rounded-full opacity-75 ';
+      dot.className = 'relative inline-flex rounded-full h-3 w-3 ';
+
+      if (type === 'active') {
+        ping.className += 'bg-emerald-400 animate-ping';
+        dot.className += 'bg-emerald-500';
+        ribbon.className = ribbon.className.replace(/border-red-\d+|border-yellow-\d+/g, 'border-emerald-250');
+      } else if (type === 'transfer') {
+        ping.className += 'bg-blue-400 animate-ping';
+        dot.className += 'bg-blue-500';
+      } else if (type === 'error') {
+        ping.className += 'bg-rose-400';
+        dot.className += 'bg-rose-500';
+      } else if (type === 'idle') {
+        ping.className += 'bg-amber-400 animate-ping';
+        dot.className += 'bg-amber-500';
+      }
+    }
+
+    // --- 5. WEBRTC BAĞLI CİHAZ YÖNETİMİ ---
+    function connectToPeer(targetId) {
+      if (!myId) {
+        showToast('Cihaz kimliğiniz henüz rezerve edilmedi. Lütfen sisteme kayıt olana kadar saniye bekleyin.', 'warning');
+        return;
+      }
+      if (targetId === myId) {
+        showToast('Kendi kendinize dosya transferi yapamazsınız!', 'warning');
+        return;
+      }
+      
+      updateStatus(`${targetId} nolu cihaza bağlanılıyor...`, 'idle');
+      
+      // Güvenilir, sıkıştırmaya ve kayıpsız WebRTC kanalına bağlan
+      const conn = myPeer.connect(targetId, {
+        reliable: true
+      });
+      setupConnection(conn);
+    }
+
+    // WebRTC Veri Kanalı İşlemleri
+    function setupConnection(conn) {
+      currentConnection = conn;
+
+      conn.on('open', () => {
+        showToast('Başarılı! Cihazlar arasında WebRTC kanalı kuruldu.', 'success');
+        updateStatus(`${conn.peer} Cihazı ile Bağlantı Aktif`, 'active');
+        
+        // Ara yüzü kilidini aç
+        document.getElementById('transfer-card').classList.remove('filter', 'grayscale', 'opacity-45', 'pointer-events-none');
+        document.getElementById('target-id-indicator').innerText = `Alıcı: ${conn.peer}`;
+        document.getElementById('target-id-indicator').classList.remove('hidden');
+        document.getElementById('peer-count-pill').classList.remove('hidden');
+        
+        // Bağlantı formunu geçici olarak kapat
+        document.getElementById('connect-btn').innerHTML = '<i data-lucide="unlink" class="w-4 h-4"></i> Bağlantıyı Kes';
+        document.getElementById('connect-btn').classList.replace('bg-indigo-600', 'bg-rose-600');
+        document.getElementById('connect-btn').classList.replace('hover:bg-indigo-700', 'hover:bg-rose-700');
+        
+        lucide.createIcons();
+      });
+
+      // Data Alma İşleyicisi
+      conn.on('data', (data) => {
+        handleReceivedData(data);
+      });
+
+      conn.on('close', () => {
+        showToast('Karşı cihaz bağlantıyı kesti veya çıktı.', 'warning');
+        closeActiveConnection(true);
+      });
+
+      conn.on('error', (err) => {
+        console.error('Bağlantı Hatası: ', err);
+        showToast('WebRTC tünelinde beklenmedik bir hata oluştu.', 'error');
+        closeActiveConnection(true);
+      });
+    }
+
+    // Bağlantıyı Tamamen Kapat
+    function closeActiveConnection(fromUserEvent = false) {
+      if (currentConnection) {
+        currentConnection.close();
+        currentConnection = null;
+      }
+      resetConnectionUI();
+    }
+
+    function resetConnectionUI() {
+      // Ara yüzleri sıfırla
+      document.getElementById('transfer-card').classList.add('filter', 'grayscale', 'opacity-45', 'pointer-events-none');
+      document.getElementById('target-id-indicator').classList.add('hidden');
+      document.getElementById('peer-count-pill').classList.add('hidden');
+      
+      document.getElementById('connect-btn').innerHTML = '<i data-lucide="link" class="w-4 h-4"></i> Bağlan';
+      document.getElementById('connect-btn').classList.replace('bg-rose-600', 'bg-indigo-600');
+      document.getElementById('connect-btn').classList.replace('hover:bg-rose-700', 'hover:bg-indigo-700');
+      
+      updateStatus('Hazır. Bağlantı bekleniyor.', 'active');
+      lucide.createIcons();
+    }
+
+    // --- 6. GELEN VERİ YÖNETME MOTORU (ALICI SÜRECİ) ---
+    function handleReceivedData(msg) {
+      if (!msg || !msg.type) return;
+
+      if (msg.type === 'file-meta') {
+        // Yeni bir dosya indirme talebi geldi
+        const transferId = msg.id;
+        activeInboundTransfers[transferId] = {
+          name: msg.name,
+          size: msg.size,
+          mime: msg.mime,
+          totalChunks: msg.totalChunks,
+          receivedChunks: 0,
+          chunks: new Array(msg.totalChunks), // Tam boyutlu bellek alanını ayır
+          startTime: Date.now(),
+          lastLoadedBytes: 0,
+          currentSpeed: 0,
+          lastSpeedUpdate: Date.now()
+        };
+        
+        createTransferUI(transferId, msg.name, msg.size, 'incoming');
+        updateStatus('Dosya Alınıyor...', 'transfer');
+      } 
+      
+      else if (msg.type === 'file-chunk') {
+        const transferId = msg.id;
+        const transfer = activeInboundTransfers[transferId];
+        
+        if (transfer) {
+          // Gelen ArrayBuffer chunk'ını tam index'e yerleştir
+          transfer.chunks[msg.index] = msg.data;
+          transfer.receivedChunks++;
+
+          // Hız ve Süre İstatistiklerini Güncelle (Grafik Sıklığı Dengeleme: 500ms)
+          const bytesReceived = transfer.receivedChunks * CHUNK_SIZE;
+          const now = Date.now();
+          const timeDiff = (now - transfer.lastSpeedUpdate) / 1000;
+          
+          if (timeDiff >= 0.5) {
+            const bytesDiff = bytesReceived - transfer.lastLoadedBytes;
+            transfer.currentSpeed = bytesDiff / timeDiff; // byte / saniye
+            transfer.lastLoadedBytes = bytesReceived;
+            transfer.lastSpeedUpdate = now;
+          }
+
+          const elapsedSec = (now - transfer.startTime) / 1000;
+          const averageSpeed = bytesReceived / (elapsedSec || 1);
+          const currentProgress = (transfer.receivedChunks / transfer.totalChunks) * 100;
+          const speedToUse = transfer.currentSpeed || averageSpeed;
+          const timeLeft = speedToUse > 0 ? (transfer.size - bytesReceived) / speedToUse : 0;
+
+          updateTransferUI(transferId, bytesReceived, transfer.size, speedToUse, timeLeft, currentProgress, 'Alınıyor...');
+        }
+      } 
+      
+      else if (msg.type === 'file-end') {
+        const transferId = msg.id;
+        const transfer = activeInboundTransfers[transferId];
+        
+        if (transfer) {
+          updateStatus('Dosya Birleştiriliyor ve İndiriliyor...', 'transfer');
+          
+          // Küçük paketleri tek bir büyük dosya Blob'una dönüştür
+          const fileBlob = new Blob(transfer.chunks, { type: transfer.mime || 'application/octet-stream' });
+          
+          // Otomatik Tarayıcı İndirmeyi Başlat
+          const objectUrl = URL.createObjectURL(fileBlob);
+          const downloadAnchor = document.createElement('a');
+          downloadAnchor.href = objectUrl;
+          downloadAnchor.download = transfer.name;
+          document.body.appendChild(downloadAnchor);
+          downloadAnchor.click();
+          
+          // Belleği Temizleme
+          setTimeout(() => {
+            document.body.removeChild(downloadAnchor);
+            URL.revokeObjectURL(objectUrl);
+          }, 100);
+
+          completeTransferUI(transferId);
+          showToast(`"${transfer.name}" başarıyla alındı ve indirildi!`, 'success');
+          updateStatus(`${currentConnection.peer} Cihazı ile Bağlantı Aktif`, 'active');
+        }
+      }
+    }
+
+    // --- 7. DOSYA GÖNDERİM MOTORU (GÖNDERİCİ SÜRECİ) ---
+    async function processAndSendFiles(files) {
+      if (!currentConnection) {
+        showToast('Bağlanmış aktif bir cihaz bulunmamaktadır. Lütfen ilk önce eşleştirme yapın.', 'warning');
+        return;
+      }
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const transferId = Math.random().toString(36).substring(2, 9);
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        
+        activeOutboundTransfers[transferId] = {
+          file: file,
+          sentChunks: 0,
+          totalChunks: totalChunks,
+          status: 'sending'
         };
 
-        const formatBytes = (bytes) => {
-            if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-        };
+        createTransferUI(transferId, file.name, file.size, 'outgoing');
+        
+        // Dosyayı asenkron olarak arka planda tara ve gönder
+        sendIndividualFile(transferId, file);
+      }
+    }
 
-        const App = () => {
-            const [myId, setMyId] = useState('');
-            const [remoteId, setRemoteId] = useState('');
-            const [peer, setPeer] = useState(null);
-            const [connection, setConnection] = useState(null);
-            
-            const [transferStatus, setTransferStatus] = useState('idle');
-            const [transferProgress, setTransferProgress] = useState(0);
-            const [receivedFile, setReceivedFile] = useState(null);
-            const [sentFileName, setSentFileName] = useState('');
-            const [incomingOffer, setIncomingOffer] = useState(null);
-            
-            const [showQr, setShowQr] = useState(false);
-            const [pairedDevices, setPairedDevices] = useState([]);
-            const [toast, setToast] = useState({ show: false, message: '' });
-            
-            const fileInputRef = useRef(null);
-            const qrRef = useRef(null);
-            const chunkBuffers = useRef({});
-            const activeConnRef = useRef(null);
-            const pendingFileRef = useRef(null);
+    async function sendIndividualFile(transferId, file) {
+      const totalSize = file.size;
+      const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
+      
+      // Sinyalleşme üzerinden ön bilgi paketini (meta) ulaştır
+      currentConnection.send({
+        type: 'file-meta',
+        id: transferId,
+        name: file.name,
+        size: totalSize,
+        mime: file.type,
+        totalChunks: totalChunks
+      });
 
-            const getShareUrl = () => {
-                return `https://gokhangeo.github.io/hub/?join=${myId}`;
+      let offset = 0;
+      let chunkIndex = 0;
+      let startTime = Date.now();
+      let lastLoadedBytes = 0;
+      let currentSpeed = 0;
+      let lastSpeedUpdate = Date.now();
+
+      updateStatus('Dosya Gönderiliyor...', 'transfer');
+
+      // Parça parça okuma akış döngüsü
+      while (offset < totalSize) {
+        // WebRTC Veri kanalında tıkanıklığı önlemek için Backpressure Kontrolü
+        if (currentConnection.dataChannel && currentConnection.dataChannel.bufferedAmount > MAX_BUFFERED_AMOUNT) {
+          await new Promise(resolve => {
+            const checkBufferedQueue = () => {
+              if (currentConnection.dataChannel.bufferedAmount < MAX_BUFFERED_AMOUNT / 3) {
+                resolve();
+              } else {
+                setTimeout(checkBufferedQueue, 35); // Bekle ve buffer durumunu tekrar yokla
+              }
             };
+            checkBufferedQueue();
+          });
+        }
 
-            const showToast = (msg) => {
-                setToast({ show: true, message: msg });
-                setTimeout(() => setToast({ show: false, message: '' }), 3000);
-            };
+        // Dosya dilimi oku
+        const slice = file.slice(offset, offset + CHUNK_SIZE);
+        let arrayBuffer;
+        try {
+          arrayBuffer = await slice.arrayBuffer();
+        } catch (e) {
+          console.error("Dosya okunurken hata:", e);
+          showToast(`"${file.name}" okunurken hata oluştu.`, 'error');
+          failTransferUI(transferId);
+          return;
+        }
 
-            const setupConnection = (conn) => {
-                if (!conn) return;
-                if (activeConnRef.current && activeConnRef.current.peer === conn.peer && activeConnRef.current.open) return;
+        // WebRTC kanalı ile gönder
+        try {
+          currentConnection.send({
+            type: 'file-chunk',
+            id: transferId,
+            index: chunkIndex,
+            data: arrayBuffer
+          });
+        } catch (err) {
+          console.error("Gönderim hatası:", err);
+          showToast('Dosya gönderilemedi. Bağlantı kopmuş olabilir.', 'error');
+          failTransferUI(transferId);
+          return;
+        }
 
-                conn.on('open', () => {
-                    if (activeConnRef.current && activeConnRef.current.open && activeConnRef.current.peer === conn.peer) {
-                        conn.close();
-                        return;
-                    }
-                    activeConnRef.current = conn;
-                    setConnection(conn);
-                    setTransferStatus('connected');
-                    setRemoteId(conn.peer);
-                    showToast("Güvenli Bağlantı Kuruldu!");
-                    setShowQr(false);
-                    
-                    setPairedDevices(prev => {
-                        const updated = [conn.peer, ...prev.filter(id => id !== conn.peer)].slice(0, 5);
-                        localStorage.setItem('hub_paired_devices', JSON.stringify(updated));
-                        return updated;
-                    });
-                });
+        offset += CHUNK_SIZE;
+        chunkIndex++;
 
-                conn.on('data', (data) => {
-                    if (data.type === 'file-offer') {
-                        setIncomingOffer({ fileId: data.fileId, fileName: data.fileName, fileSize: data.fileSize, fileType: data.fileType });
-                        setTransferStatus('receiving_offer');
-                        showToast("Dosya İsteği Geldi");
-                        if (navigator.vibrate) navigator.vibrate(200);
-                    } else if (data.type === 'file-accept') {
-                        const pending = pendingFileRef.current;
-                        if (pending && pending.fileId === data.fileId) {
-                            startChunking(pending.file, data.fileId);
-                        } else {
-                            showToast("Dosya bulunamadı, iptal edildi.");
-                            setTransferStatus('connected');
-                        }
-                    } else if (data.type === 'file-reject') {
-                        setTransferStatus('connected');
-                        pendingFileRef.current = null;
-                        showToast("Karşı taraf dosyayı reddetti.");
-                    } else if (data.type === 'file-chunk') {
-                        const { fileId, fileName, fileType, chunk, totalChunks, currentChunk } = data;
-                        if (!chunkBuffers.current[fileId]) { 
-                            chunkBuffers.current[fileId] = []; 
-                            setTransferStatus('receiving'); 
-                            setReceivedFile(null);
-                        }
-                        chunkBuffers.current[fileId][currentChunk] = chunk;
-                        
-                        // %0'da donmayı önlemek için arayüzü her 20 parçada bir güncelle (Performans)
-                        if (currentChunk % 20 === 0 || currentChunk === totalChunks - 1) {
-                            setTransferProgress(Math.round(((currentChunk + 1) / totalChunks) * 100));
-                        }
-                        
-                        if (chunkBuffers.current[fileId].length === totalChunks) {
-                            const blob = new Blob(chunkBuffers.current[fileId], { type: fileType });
-                            setReceivedFile({ url: URL.createObjectURL(blob), name: fileName, type: fileType });
-                            setTransferStatus('completed');
-                            setIncomingOffer(null);
-                            delete chunkBuffers.current[fileId];
-                            conn.send({ type: 'file-delivered', fileId });
-                            if (navigator.vibrate) navigator.vibrate(200);
-                            showToast("Dosya Alındı!");
-                        }
-                    } else if (data.type === 'file-delivered') {
-                        setTransferStatus('delivered');
-                        pendingFileRef.current = null;
-                        showToast("Teslimat Başarılı!");
-                    }
-                });
-                
-                conn.on('close', () => { 
-                    if (activeConnRef.current === conn) {
-                        activeConnRef.current = null;
-                        setConnection(null); 
-                        setTransferStatus('idle'); 
-                        showToast("Bağlantı Kesildi");
-                    }
-                });
-            };
+        // Hız analizi
+        const bytesSent = Math.min(offset, totalSize);
+        const now = Date.now();
+        const timeDiff = (now - lastSpeedUpdate) / 1000;
 
-            useEffect(() => {
-                let savedId = localStorage.getItem('hub_my_id');
-                if (!savedId) {
-                    savedId = "OP-" + Math.random().toString(36).substring(2, 6).toUpperCase();
-                    localStorage.setItem('hub_my_id', savedId);
-                }
-                setMyId(savedId);
-                setPairedDevices(JSON.parse(localStorage.getItem('hub_paired_devices') || '[]'));
+        if (timeDiff >= 0.5) {
+          const bytesDiff = bytesSent - lastLoadedBytes;
+          currentSpeed = bytesDiff / timeDiff;
+          lastLoadedBytes = bytesSent;
+          lastSpeedUpdate = now;
+        }
 
-                const newPeer = new window.Peer(savedId, { config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }] } });
-                newPeer.on('open', () => {
-                    setPeer(newPeer);
-                    const urlParams = new URLSearchParams(window.location.search);
-                    const joinId = urlParams.get('join');
-                    if (joinId && joinId !== savedId) {
-                        setTimeout(() => { if (!activeConnRef.current) setupConnection(newPeer.connect(joinId, { reliable: true })); }, 500);
-                    }
-                });
-                newPeer.on('connection', (conn) => setupConnection(conn));
-                return () => { if (newPeer) newPeer.destroy(); };
-            }, []);
+        const elapsedSec = (now - startTime) / 1000;
+        const averageSpeed = bytesSent / (elapsedSec || 1);
+        const currentProgress = (bytesSent / totalSize) * 100;
+        const speedToUse = currentSpeed || averageSpeed;
+        const timeLeft = speedToUse > 0 ? (totalSize - bytesSent) / speedToUse : 0;
 
-            const connectToPeer = (id) => {
-                const target = id || remoteId;
-                if (!target || !peer) return;
-                setTransferStatus('connecting');
-                setupConnection(peer.connect(target, { reliable: true }));
-            };
+        updateTransferUI(transferId, bytesSent, totalSize, speedToUse, timeLeft, currentProgress, 'Gönderiliyor...');
+      }
 
-            const copyToClipboard = (text) => {
-                navigator.clipboard.writeText(text).then(() => showToast("Bağlantı Kopyalandı!")).catch(() => {
-                    const input = document.createElement('input');
-                    input.value = text; document.body.appendChild(input);
-                    input.select(); document.execCommand('copy'); document.body.removeChild(input);
-                    showToast("Bağlantı Kopyalandı!");
-                });
-            };
+      // Dosyanın bittiğini karşı tarafa bildir
+      currentConnection.send({
+        type: 'file-end',
+        id: transferId
+      });
 
-            const shareLink = async () => {
-                const shareUrl = getShareUrl();
-                if (navigator.share && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
-                    try { await navigator.share({ title: 'Güvenli Bağlantı', url: shareUrl }); } catch (err) { copyToClipboard(shareUrl); }
-                } else { copyToClipboard(shareUrl); }
-            };
+      completeTransferUI(transferId);
+      showToast(`"${file.name}" başarıyla gönderildi!`, 'success');
+      updateStatus(`${currentConnection.peer} Cihazı ile Bağlantı Aktif`, 'active');
+    }
 
-            const handleFileSelect = (e) => {
-                const file = e.target.files[0]; 
-                if (!file || !connection) return;
-                
-                const fileId = Math.random().toString(36).substring(7);
-                setSentFileName(file.name);
-                pendingFileRef.current = { file, fileId }; 
-                
-                setTransferStatus('pending_approval');
-                connection.send({
-                    type: 'file-offer', fileId: fileId, fileName: file.name, fileSize: file.size, fileType: file.type
-                });
-                
-                if(fileInputRef.current) fileInputRef.current.value = '';
-            };
 
-            const startChunking = async (file, fileId) => {
-                setTransferStatus('sending');
-                setTransferProgress(0);
-                
-                // %0'da Kalma Çözümü: WebRTC kanalları büyük paketleri düşürür. 32KB garanti teslimattır.
-                const chunkSize = 32 * 1024; 
-                const totalChunks = Math.ceil(file.size / chunkSize);
-                
-                for (let i = 0; i < totalChunks; i++) {
-                    if (!activeConnRef.current || !activeConnRef.current.open) {
-                        showToast("Bağlantı koptu!");
-                        setTransferStatus('connected');
-                        break;
-                    }
-                    const start = i * chunkSize;
-                    const chunk = file.slice(start, Math.min(file.size, start + chunkSize));
-                    const buffer = await chunk.arrayBuffer();
+    // --- 8. PAYLAŞIM LİSTESİ VE GÖRSEL STATÜ SÜREÇLERİ (UI) ---
+    function createTransferUI(id, name, totalBytes, direction) {
+      const list = document.getElementById('transfer-list');
+      const container = document.getElementById('active-transfers-container');
+      container.classList.remove('hidden');
 
-                    activeConnRef.current.send({ 
-                        type: 'file-chunk', fileId, fileName: file.name, fileType: file.type, 
-                        chunk: buffer, totalChunks, currentChunk: i 
-                    });
-                    
-                    // UI'ı yormamak için her 20 pakette bir güncelleme
-                    if (i % 20 === 0 || i === totalChunks - 1) {
-                        setTransferProgress(Math.round(((i + 1) / totalChunks) * 100));
-                    }
-                    
-                    // Ağın tıkanmaması için mini mola
-                    await new Promise(r => setTimeout(r, 2)); 
-                }
-            };
+      const isIncoming = direction === 'incoming';
+      const directionIcon = isIncoming ? 'download' : 'upload';
+      const directionColor = isIncoming ? 'text-blue-500' : 'text-indigo-500';
+      const directionLabel = isIncoming ? 'Gelen Dosya' : 'Giden Dosya';
 
-            const acceptFile = () => {
-                if (!connection || !incomingOffer) return;
-                connection.send({ type: 'file-accept', fileId: incomingOffer.fileId });
-                setTransferStatus('receiving');
-                showToast("Aktarım Başlıyor...");
-            };
-
-            const rejectFile = () => {
-                if (!connection || !incomingOffer) return;
-                connection.send({ type: 'file-reject', fileId: incomingOffer.fileId });
-                setIncomingOffer(null);
-                setTransferStatus('connected');
-                showToast("Dosya Reddedildi.");
-            };
-
-            const disconnect = () => {
-                if (connection) {
-                    connection.close();
-                }
-                setTransferStatus('idle');
-                setConnection(null);
-                setReceivedFile(null);
-                setIncomingOffer(null);
-            }
-
-            useEffect(() => {
-                if (myId && showQr && qrRef.current) {
-                    qrRef.current.innerHTML = "";
-                    new window.QRCode(qrRef.current, { 
-                        text: getShareUrl(), 
-                        width: 220, 
-                        height: 220,
-                        colorDark: "#020617",
-                        colorLight: "#ffffff",
-                        correctLevel: window.QRCode.CorrectLevel.H
-                    });
-                }
-            }, [myId, showQr]);
-
-            return (
-                <div className="h-screen w-screen flex items-center justify-center bg-slate-950 font-sans no-select overflow-hidden text-slate-100">
-                    <div className="w-full max-w-md bg-slate-900 h-full md:h-[90vh] md:rounded-[2.5rem] flex flex-col relative border border-slate-800 shadow-2xl">
-                        
-                        {/* Header */}
-                        <div className="p-6 pb-6 shrink-0 z-10 relative">
-                            <div className="absolute inset-0 bg-gradient-to-b from-indigo-900/10 to-transparent opacity-50"></div>
-                            <div className="flex justify-between items-center mb-6 relative">
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-3 h-3 rounded-full ${connection ? 'bg-green-500 shadow-[0_0_12px_rgba(34,197,94,0.6)]' : 'bg-slate-600'}`}></div>
-                                    <div>
-                                        <h1 className="text-sm font-black text-white tracking-widest uppercase">Dosya Merkezi</h1>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{connection ? 'Güvenli Hat Açık' : 'Bağlantı Yok'}</p>
-                                    </div>
-                                </div>
-                                <div className="flex gap-2">
-                                    <button onClick={shareLink} className="p-2.5 bg-slate-800/80 text-indigo-400 rounded-xl hover:bg-slate-700 transition-colors border border-slate-700/50"><Icon name="share-2" size={18} /></button>
-                                    <button onClick={() => setShowQr(true)} className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-lg hover:bg-indigo-500 transition-colors"><Icon name="qr-code" size={18} /></button>
-                                </div>
-                            </div>
-                            
-                            {!connection && (
-                                <div className="bg-slate-950/80 p-5 rounded-2xl flex items-center justify-between border border-slate-800/80 shadow-inner relative">
-                                    <div>
-                                        <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-1">Cihaz Kimliğiniz</p>
-                                        <p className="text-2xl font-mono font-black text-indigo-400 tracking-tight">{myId || "..."}</p>
-                                    </div>
-                                    <button onClick={() => copyToClipboard(myId)} className="text-slate-400 p-3 bg-slate-900/80 rounded-xl hover:text-white transition-colors border border-slate-800"><Icon name="copy" size={20} /></button>
-                                </div>
-                            )}
-                            
-                            {connection && (
-                                <div className="bg-green-500/10 border border-green-500/20 p-4 rounded-2xl flex items-center justify-between shadow-inner relative">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-green-500/20 rounded-lg"><Icon name="shield-check" size={18} className="text-green-500" /></div>
-                                        <div>
-                                            <p className="text-[9px] text-green-500/70 font-bold uppercase tracking-widest mb-1">Bağlı Cihaz</p>
-                                            <p className="text-base font-mono font-black text-green-400 tracking-tight">{connection.peer}</p>
-                                        </div>
-                                    </div>
-                                    <button onClick={disconnect} className="text-red-400 p-2 bg-red-500/10 rounded-xl hover:bg-red-500/20 hover:text-red-300 transition-colors border border-red-500/20"><Icon name="power" size={18} /></button>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* İçerik */}
-                        <div className="flex-1 relative bg-slate-900/40 flex flex-col px-6 pb-6">
-                            
-                            {/* QR Kod Modal */}
-                            {showQr && (
-                                <div className="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-sm flex items-center justify-center p-6 fade-in">
-                                    <div className="bg-white p-8 rounded-[2rem] flex flex-col items-center w-full max-w-[320px] shadow-2xl">
-                                        <div className="w-full flex justify-between items-center mb-8">
-                                            <span className="text-slate-900 font-black text-sm uppercase tracking-widest">Sistemi Eşleştir</span>
-                                            <button onClick={()=>setShowQr(false)} className="text-slate-400 hover:text-slate-900 transition-colors"><Icon name="x" size={24}/></button>
-                                        </div>
-                                        <div ref={qrRef} className="flex justify-center mb-8 p-4 bg-slate-50 rounded-2xl border border-slate-200"></div>
-                                        <p className="text-[10px] text-slate-500 font-bold mb-6 tracking-widest text-center uppercase">Kamerayı koda doğrultun</p>
-                                        <button onClick={shareLink} className="w-full bg-indigo-600 text-white py-4 rounded-xl font-black text-xs uppercase shadow-lg shadow-indigo-600/30 hover:bg-indigo-700 transition-colors mb-3">Bağlantı Gönder</button>
-                                        <button onClick={()=>setShowQr(false)} className="w-full bg-slate-100 text-slate-600 py-3.5 rounded-xl font-bold text-xs uppercase hover:bg-slate-200 transition-colors">Kapat</button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* BAĞLANTI BEKLENİYOR */}
-                            {!connection && transferStatus !== 'connecting' && (
-                                <div className="flex-1 flex flex-col h-full fade-in pt-4">
-                                    <div className="w-full space-y-3 mb-8">
-                                        <div className="relative">
-                                            <input value={remoteId} onChange={(e)=>setRemoteId(e.target.value.toUpperCase())} placeholder="HEDEF KODU GİRİN" className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-5 pl-14 text-left font-mono font-black text-lg text-white outline-none focus:border-indigo-500 transition-colors placeholder:text-slate-700 shadow-inner" />
-                                            <Icon name="link" size={20} className="absolute left-5 top-1/2 transform -translate-y-1/2 text-slate-600" />
-                                        </div>
-                                        <button onClick={() => connectToPeer(remoteId)} className="w-full bg-indigo-600 py-5 rounded-2xl font-black text-sm text-white uppercase tracking-widest shadow-xl shadow-indigo-600/20 hover:bg-indigo-500 active:scale-95 transition-all">Sisteme Bağlan</button>
-                                    </div>
-                                    
-                                    {pairedDevices.length > 0 && (
-                                        <div className="w-full flex-1 overflow-y-auto pb-4">
-                                            <p className="text-[10px] font-black text-slate-600 uppercase mb-4 tracking-[0.2em] px-2">Hızlı Erişim</p>
-                                            <div className="space-y-2 pr-1">
-                                                {pairedDevices.map(id => (
-                                                    <button key={id} onClick={() => connectToPeer(id)} className="w-full flex justify-between items-center bg-slate-900/80 p-4 rounded-2xl border border-slate-800/80 hover:border-indigo-500 transition-colors group shadow-sm">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="p-2 bg-slate-800 rounded-lg group-hover:bg-indigo-500/20 transition-colors"><Icon name="monitor-smartphone" size={16} className="text-slate-500 group-hover:text-indigo-400" /></div>
-                                                            <span className="font-mono font-bold text-slate-400 group-hover:text-indigo-400">{id}</span>
-                                                        </div>
-                                                        <Icon name="chevron-right" size={18} className="text-slate-600 group-hover:text-indigo-500" />
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* BAĞLANIYOR */}
-                            {transferStatus === 'connecting' && (
-                                <div className="flex-1 flex flex-col items-center justify-center space-y-5 fade-in">
-                                    <div className="w-12 h-12 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
-                                    <p className="text-xs text-indigo-400 font-black uppercase tracking-[0.2em]">Bağlantı Kuruluyor...</p>
-                                </div>
-                            )}
-                            
-                            {/* DOSYA TRANSFER ALANI */}
-                            {connection && (
-                                <div className="flex-1 flex flex-col fade-in">
-                                    <div className="flex-1 flex flex-col justify-center">
-                                        <div className="bg-slate-950/60 border border-slate-800 rounded-[2.5rem] p-8 text-center shadow-2xl relative overflow-hidden flex flex-col items-center justify-center min-h-[360px]">
-                                            
-                                            {/* ONAY BEKLENİYOR */}
-                                            {transferStatus === 'pending_approval' ? (
-                                                <div className="space-y-6 fade-in w-full">
-                                                    <div className="w-24 h-24 bg-amber-500/10 rounded-[2rem] flex items-center justify-center mx-auto border border-amber-500/20">
-                                                        <Icon name="clock" size={40} className="text-amber-500 animate-pulse" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-black text-xs text-white uppercase tracking-widest mb-3">Onay Bekleniyor</p>
-                                                        <p className="text-slate-400 text-[11px] truncate px-4 bg-slate-900 py-3 rounded-xl border border-slate-800">{sentFileName}</p>
-                                                    </div>
-                                                    <button onClick={() => {setTransferStatus('connected'); pendingFileRef.current = null; connection.send({type: 'file-reject', fileId: pendingFileRef.current?.fileId});}} className="px-8 py-3 bg-red-500/10 text-red-500 rounded-xl text-[10px] font-black uppercase hover:bg-red-500/20 transition-colors mt-4">İptal Et</button>
-                                                </div>
-                                            ) : 
-                                            
-                                            /* GELEN TEKLİF */
-                                            transferStatus === 'receiving_offer' && incomingOffer ? (
-                                                <div className="space-y-6 fade-in w-full">
-                                                    <div className="w-24 h-24 bg-indigo-500/10 rounded-[2rem] flex items-center justify-center mx-auto border border-indigo-500/20">
-                                                        <Icon name="file-question" size={40} className="text-indigo-400" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-black text-white text-sm mb-3 uppercase tracking-widest">Gelen Dosya Var</p>
-                                                        <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-                                                            <p className="text-xs text-slate-300 truncate font-medium">{incomingOffer.fileName}</p>
-                                                            <p className="text-[10px] font-black text-indigo-400 mt-2 bg-indigo-500/10 inline-block px-3 py-1 rounded-md">{formatBytes(incomingOffer.fileSize)}</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex gap-3 w-full mt-4">
-                                                        <button onClick={rejectFile} className="flex-1 bg-slate-800 text-slate-300 py-4 rounded-xl font-black text-xs uppercase hover:bg-slate-700 transition-colors">Reddet</button>
-                                                        <button onClick={acceptFile} className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black text-xs uppercase shadow-lg shadow-indigo-600/30 hover:bg-indigo-500 transition-colors">Kabul Et</button>
-                                                    </div>
-                                                </div>
-                                            ) :
-
-                                            /* AKTARIM DURUMLARI */
-                                            (transferStatus === 'sending' || transferStatus === 'receiving') ? (
-                                                <div className="space-y-8 fade-in w-full flex flex-col items-center">
-                                                    <div className="relative w-36 h-36 flex items-center justify-center">
-                                                        <svg className="w-full h-full transform -rotate-90 absolute inset-0">
-                                                            <circle cx="72" cy="72" r="66" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-slate-800" />
-                                                            <circle cx="72" cy="72" r="66" stroke="currentColor" strokeWidth="8" fill="transparent" strokeDasharray="414" strokeDashoffset={414 - (414 * transferProgress) / 100} className="progress-ring__circle text-indigo-500" />
-                                                        </svg>
-                                                        <div className="text-4xl font-black text-white">{transferProgress}</div>
-                                                        <span className="absolute bottom-6 text-[8px] font-bold text-slate-400">%</span>
-                                                    </div>
-                                                    <p className="text-xs font-black text-indigo-400 animate-pulse uppercase tracking-[0.3em]">
-                                                        {transferStatus === 'sending' ? 'GÖNDERİLİYOR...' : 'ALINIYOR...'}
-                                                    </p>
-                                                </div>
-                                            ) : 
-                                            
-                                            /* TESLİM EDİLDİ */
-                                            transferStatus === 'delivered' ? (
-                                                <div className="space-y-6 fade-in w-full">
-                                                    <div className="w-24 h-24 bg-green-500/10 rounded-[2rem] flex items-center justify-center mx-auto border border-green-500/20">
-                                                        <Icon name="check" size={48} className="text-green-500" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-xs text-green-400 font-black uppercase tracking-widest mb-3">Teslimat Başarılı</p>
-                                                        <p className="font-bold text-sm text-white truncate px-4 bg-slate-900 py-4 rounded-xl border border-slate-800">{sentFileName}</p>
-                                                    </div>
-                                                    <button onClick={() => {setTransferStatus('connected'); setReceivedFile(null);}} className="mt-4 px-10 py-3.5 bg-slate-800 text-white rounded-xl text-xs font-black uppercase hover:bg-slate-700 transition-colors">Tamam</button>
-                                                </div>
-                                            ) : 
-                                            
-                                            /* DOSYA ALINDI */
-                                            receivedFile ? (
-                                                <div className="space-y-6 fade-in w-full">
-                                                    {receivedFile.type.startsWith('image/') ? (
-                                                        <div className="w-full h-44 rounded-2xl overflow-hidden border border-slate-700 mb-4 bg-slate-900 relative">
-                                                            <img src={receivedFile.url} className="w-full h-full object-cover opacity-90" />
-                                                        </div>
-                                                    ) : receivedFile.type.startsWith('video/') ? (
-                                                        <div className="w-full h-44 rounded-2xl overflow-hidden border border-slate-700 mb-4 bg-slate-900">
-                                                            <video src={receivedFile.url} controls className="w-full h-full object-cover" />
-                                                        </div>
-                                                    ) : (
-                                                        <div className="w-24 h-24 bg-indigo-500/10 rounded-[2rem] flex items-center justify-center mx-auto border border-indigo-500/20 mb-4">
-                                                            <Icon name="file-check" size={40} className="text-indigo-400" />
-                                                        </div>
-                                                    )}
-                                                    
-                                                    <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 mb-6">
-                                                        <p className="font-bold text-sm text-white truncate">{receivedFile.name}</p>
-                                                    </div>
-                                                    
-                                                    <div className="flex gap-3">
-                                                        <button onClick={() => {setReceivedFile(null); setTransferStatus('connected');}} className="flex-1 bg-slate-800 text-slate-300 py-4 rounded-xl font-black text-xs uppercase hover:bg-slate-700 transition-colors">Kapat</button>
-                                                        <a href={receivedFile.url} download={receivedFile.name} className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white py-4 rounded-xl font-black text-xs uppercase shadow-lg shadow-green-600/30 hover:bg-green-500 transition-colors">
-                                                            <Icon name="download" size={18} /> Kaydet
-                                                        </a>
-                                                    </div>
-                                                </div>
-                                            ) : 
-                                            
-                                            /* BOŞ DURUM - DOSYA SEÇ */
-                                            (
-                                                <div className="space-y-8 w-full fade-in">
-                                                    <div className="w-32 h-32 bg-slate-900 rounded-[2.5rem] flex items-center justify-center mx-auto border border-slate-800 group hover:border-indigo-500 hover:bg-slate-800/80 transition-all cursor-pointer shadow-lg" onClick={() => fileInputRef.current.click()}>
-                                                        <Icon name="upload-cloud" size={48} className="text-slate-500 group-hover:text-indigo-400 transition-colors" />
-                                                    </div>
-                                                    <div>
-                                                        <h3 className="font-black text-white uppercase text-sm tracking-widest mb-2">Dosya Gönder</h3>
-                                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Fotoğraf, Video veya Belge</p>
-                                                    </div>
-                                                    <input type="file" onChange={handleFileSelect} className="hidden" ref={fileInputRef} accept="*/*, .pdf, .doc, .docx, .xls, .xlsx, .zip, .rar, .txt, .mp4, .mov, .avi" />
-                                                    <button onClick={() => fileInputRef.current.click()} className="w-full bg-indigo-600 py-4 rounded-2xl font-black text-xs text-white uppercase shadow-xl shadow-indigo-600/20 hover:bg-indigo-500 active:scale-95 transition-all tracking-widest">Dosya Seç</button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Alt Bilgi */}
-                        <div className="p-5 bg-slate-950 flex justify-between items-center border-t border-slate-800 shrink-0 safe-bottom">
-                            <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Sistem v7.4 Pro</span>
-                            <span className="text-[9px] font-bold text-slate-600">© Gökhan ELGÜL tarafından tasarlanmıştır.</span>
-                        </div>
-
-                        {/* Toast Bildirimler */}
-                        {toast.show && (
-                            <div className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full text-[10px] font-black uppercase shadow-2xl border border-slate-700 z-[100] toast-active flex items-center gap-2 whitespace-nowrap">
-                                <Icon name="info" size={14} className="text-indigo-400" />
-                                {toast.message}
-                            </div>
-                        )}
-                    </div>
+      const transferHtml = `
+        <div id="card-${id}" class="fade-in bg-slate-50 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 p-4 rounded-2xl space-y-3 shadow-none transition-all">
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <div class="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700 ${directionColor} shadow-sm">
+                <i data-lucide="${directionIcon}" class="w-5 h-5"></i>
+              </div>
+              <div class="min-w-0">
+                <p class="text-sm font-semibold truncate max-w-[200px] sm:max-w-xs md:max-w-md" title="${name}">${name}</p>
+                <div class="flex items-center gap-2 text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500 tracking-wider">
+                  <span>${directionLabel}</span>
+                  <span>•</span>
+                  <span>${formatBytes(totalBytes)}</span>
                 </div>
-            );
-        };
+              </div>
+            </div>
+            
+            <div class="text-right">
+              <span id="label-${id}" class="text-xs font-semibold text-amber-500">Hazırlanıyor</span>
+            </div>
+          </div>
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
+          <!-- Progress Bar -->
+          <div class="space-y-1.5">
+            <div class="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div id="bar-${id}" class="bg-indigo-600 h-full rounded-full w-0 transition-all duration-150 shadow-sm shadow-indigo-600/10"></div>
+            </div>
+            
+            <div class="flex items-center justify-between text-[11px] font-mono text-slate-400 dark:text-slate-500">
+              <div id="stats-bytes-${id}">0 B / 0 B</div>
+              <div class="flex items-center gap-3" id="stats-speed-${id}">
+                <div>-- MB/sn</div>
+                <div>-- sn</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      list.insertAdjacentHTML('afterbegin', transferHtml);
+      lucide.createIcons();
+    }
+
+    function updateTransferUI(id, currentBytes, totalBytes, speedSec, timeLeft, progressPercent, stateLabel) {
+      const bar = document.getElementById(`bar-${id}`);
+      const bytesLabel = document.getElementById(`stats-bytes-${id}`);
+      const speedLabel = document.getElementById(`stats-speed-${id}`);
+      const textLabel = document.getElementById(`label-${id}`);
+
+      if (bar) bar.style.width = `${progressPercent}%`;
+      if (textLabel) {
+        textLabel.innerText = `${Math.floor(progressPercent)}%`;
+        textLabel.className = "text-xs font-bold text-indigo-500 dark:text-indigo-400";
+      }
+
+      if (bytesLabel) {
+        bytesLabel.innerText = `${formatBytes(currentBytes)} / ${formatBytes(totalBytes)}`;
+      }
+
+      if (speedLabel) {
+        const speedFormatted = speedSec > 0 ? `${formatBytes(speedSec)}/sn` : '-- B/sn';
+        const estFormatted = timeLeft > 0 ? `Kalan: ${formatTime(timeLeft)}` : 'Süre bitti';
+        speedLabel.innerHTML = `<div>${speedFormatted}</div> <div>${estFormatted}</div>`;
+      }
+    }
+
+    function completeTransferUI(id) {
+      const card = document.getElementById(`card-${id}`);
+      const bar = document.getElementById(`bar-${id}`);
+      const textLabel = document.getElementById(`label-${id}`);
+      const speedLabel = document.getElementById(`stats-speed-${id}`);
+
+      if (card) {
+        // Başarılı arka plan veya hafif parıltı ver
+        card.classList.add('border-emerald-250', 'bg-emerald-50/10', 'dark:bg-emerald-950/5');
+      }
+      if (bar) {
+        bar.className = bar.className.replace('bg-indigo-600', 'bg-emerald-500');
+        bar.style.width = '100%';
+      }
+      if (textLabel) {
+        textLabel.innerHTML = '<span class="text-emerald-500 dark:text-emerald-400 flex items-center gap-1"><i data-lucide="check-circle" class="w-4 h-4 inline"></i> Tamamlandı</span>';
+      }
+      if (speedLabel) {
+        speedLabel.innerHTML = `<div>Bitti</div>`;
+      }
+      lucide.createIcons();
+    }
+
+    function failTransferUI(id) {
+      const card = document.getElementById(`card-${id}`);
+      const bar = document.getElementById(`bar-${id}`);
+      const textLabel = document.getElementById(`label-${id}`);
+
+      if (card) {
+        card.classList.add('border-rose-200', 'bg-rose-50/10');
+      }
+      if (bar) {
+        bar.className = bar.className.replace('bg-indigo-600', 'bg-rose-500');
+        bar.style.width = '100%';
+      }
+      if (textLabel) {
+        textLabel.innerHTML = '<span class="text-rose-500 font-bold">Hata</span>';
+      }
+    }
+
+    // --- 9. ETKİLEŞİM VE DOSYA DİNLEYİCİLERİ ---
+    function bindEvents() {
+      // Tema Butonu
+      document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+
+      // Kopyalama Butonları
+      document.getElementById('copy-id-btn').addEventListener('click', () => {
+        if (!myId) return;
+        navigator.clipboard.writeText(myId).then(() => {
+          showToast('Cihaz kodu kopyalandı! Karşı cihaza iletebilirsiniz.', 'success');
+        });
+      });
+
+      document.getElementById('share-link-btn').addEventListener('click', () => {
+        if (!myId) return;
+        const shareUrl = `${window.location.origin}${window.location.pathname}?join=${myId}`;
+        navigator.clipboard.writeText(shareUrl).then(() => {
+          showToast('Hızlı bağlantı linki kopyalandı! Mobil cihazda açabilirsiniz.', 'success');
+        });
+      });
+
+      // Bağlan Butonu
+      document.getElementById('connect-btn').addEventListener('click', () => {
+        if (currentConnection) {
+          // Bağlantıyı manuel kes
+          closeActiveConnection(true);
+          showToast('Bağlantı başarıyla sonlandırıldı.', 'info');
+        } else {
+          const inputEl = document.getElementById('peer-id-input');
+          const targetId = inputEl.value.trim().toUpperCase();
+          if (!targetId || targetId.length !== 6 || isNaN(targetId)) {
+            showToast('Lütfen geçerli 6 haneli bir sayısal kod girin.', 'warning');
+            return;
+          }
+          connectToPeer(targetId);
+        }
+      });
+
+      // Sürükle-Bırak Dosya Seçicileri
+      const dropZone = document.getElementById('drop-zone');
+      const fileSelector = document.getElementById('file-selector');
+
+      dropZone.addEventListener('click', () => {
+        fileSelector.click();
+      });
+
+      fileSelector.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          processAndSendFiles(e.target.files);
+        }
+      });
+
+      // Sürükleme Efektleri
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropZone.classList.add('border-indigo-500', 'bg-indigo-50/20', 'dark:bg-indigo-950/10');
+        }, false);
+      });
+
+      ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropZone.classList.remove('border-indigo-500', 'bg-indigo-50/20', 'dark:bg-indigo-950/10');
+        }, false);
+      });
+
+      dropZone.addEventListener('drop', (e) => {
+        const transferFiles = e.dataTransfer.files;
+        if (transferFiles.length > 0) {
+          processAndSendFiles(transferFiles);
+        }
+      });
+
+      // Temizleme Butonu
+      document.getElementById('clear-finished-btn').addEventListener('click', () => {
+        document.getElementById('transfer-list').innerHTML = '';
+        document.getElementById('active-transfers-container').classList.add('hidden');
+      });
+
+      // QR Kamera Tarayıcı Kontrolleri
+      document.getElementById('open-cam-btn').addEventListener('click', () => {
+        document.getElementById('reader-box').classList.remove('hidden');
+        startCameraScan();
+      });
+
+      document.getElementById('close-cam-btn').addEventListener('click', () => {
+        stopCameraScan();
+      });
+
+      // QR Görsel Okuma Tetikleyicisi
+      document.getElementById('qr-file-input').addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          scanQRFile(e.target.files[0]);
+        }
+      });
+    }
+
+    // --- 10. QR TARAMA (KAMERA GÜNCEL KOD ÇÖZÜCÜ) ---
+    function startCameraScan() {
+      const containerId = "reader";
+      
+      // Herhangi bir eski tarama varsa durdur
+      if (html5QrCode) {
+        html5QrCode.clear();
+      }
+
+      html5QrCode = new Html5Qrcode(containerId);
+      
+      const qrCodeSuccessCallback = (decodedText) => {
+        console.log("QR Kod Analiz Sonucu:", decodedText);
+        stopCameraScan();
+        
+        let parsedId = decodedText;
+        try {
+          // Eğer URL formatındaysa ve içinde join parametresi barındırıyorsa parse et
+          const u = new URL(decodedText);
+          const joinId = u.searchParams.get('join');
+          if (joinId) {
+            parsedId = joinId;
+          }
+        } catch(e) {
+          // Normal ID girilmiş sayıyoruz
+        }
+
+        // Değeri set et ve otomatik bağlan
+        document.getElementById('peer-id-input').value = parsedId;
+        showToast('QR Kod başarıyla okundu! Bağlanılıyor...', 'success');
+        connectToPeer(parsedId);
+      };
+
+      const qrCodeErrorCallback = (errorMessage) => {
+        // Canlı hataları log seviyesinde tutuyoruz, kullanıcıyı meşgul etmiyoruz
+      };
+
+      // Arka kamerayı öncelikli ayarla
+      html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 230, height: 230 } },
+        qrCodeSuccessCallback,
+        qrCodeErrorCallback
+      ).catch(err => {
+        console.error("Kamera açılamadı:", err);
+        showToast('Kameranıza ulaşılamadı. İzinlerin tam olduğunu veya kamera donanımının aktif olduğunu onaylayın.', 'error');
+        document.getElementById('reader-box').classList.add('hidden');
+      });
+    }
+
+    function stopCameraScan() {
+      if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().then(() => {
+          document.getElementById('reader-box').classList.add('hidden');
+        }).catch(err => {
+          console.error("Kamera durdurma hatası:", err);
+          document.getElementById('reader-box').classList.add('hidden');
+        });
+      } else {
+        document.getElementById('reader-box').classList.add('hidden');
+      }
+    }
+
+    // Dosya (Görsel) içerisindeki QR kodu saptama
+    function scanQRFile(file) {
+      const html5Qr = new Html5Qrcode("reader-temp-div");
+      html5Qr.scanFile(file, true)
+        .then(decodedText => {
+          let parsedId = decodedText;
+          try {
+            const u = new URL(decodedText);
+            const joinId = u.searchParams.get('join');
+            if (joinId) {
+              parsedId = joinId;
+            }
+          } catch(e) {}
+
+          document.getElementById('peer-id-input').value = parsedId;
+          showToast('Dosyadaki QR Kod çözümlendi! Bağlantı kuruluyor...', 'success');
+          connectToPeer(parsedId);
+        })
+        .catch(err => {
+          console.error("QR Dosyası Okunamadı:", err);
+          showToast('Seçilen görselde geçerli bir QR kod saptanamadı.', 'error');
+        });
+    }
+
+    // --- 11. YARDIMCI MATEMATİK & DÖNÜŞTÜRÜCÜ METOTLAR ---
+    function checkUrlJoin() {
+      // Sinyalleşme tetiklenince checkUrlJoin de peer open sonrasında ele alınır
+    }
+
+    function formatBytes(bytes, decimals = 2) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const dm = decimals < 0 ? 0 : decimals;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    function formatTime(seconds) {
+      if (!isFinite(seconds) || seconds < 0) return 'Hesaplanıyor...';
+      if (seconds < 60) return `${Math.ceil(seconds)} sn`;
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.ceil(seconds % 60);
+      return `${mins} dk ${secs} sn`;
+    }
+  </script>
 </body>
 </html>

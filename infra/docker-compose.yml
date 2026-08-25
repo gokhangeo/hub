@@ -1,0 +1,38 @@
+services:
+  peerjs:
+    image: peerjs/peerjs-server:1.0.2
+    restart: unless-stopped
+    command: ["--port", "9000", "--path", "/", "--key", "peerjs", "--proxied", "true"]
+    expose: ["9000"]
+
+  coturn:
+    image: coturn/coturn:4.6.3
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./certs:/certs:ro
+    command:
+      - --listening-port=3478
+      - --tls-listening-port=443
+      - --cert=/certs/fullchain.pem
+      - --pkey=/certs/privkey.pem
+      - --fingerprint
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET:?TURN_SECRET is required}
+      - --realm=${TURN_REALM:?TURN_REALM is required}
+      - --external-ip=${TURN_EXTERNAL_IP:?TURN_EXTERNAL_IP is required}
+      - --min-port=49160
+      - --max-port=49220
+      - --no-cli
+      - --no-multicast-peers
+      - --stale-nonce=600
+
+  turn-credentials:
+    build: ./turn-credentials
+    restart: unless-stopped
+    environment:
+      TURN_SECRET: ${TURN_SECRET:?TURN_SECRET is required}
+      TURN_HOST: ${TURN_HOST:?TURN_HOST is required}
+      ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:?ALLOWED_ORIGIN is required}
+      PORT: 8080
+    expose: ["8080"]

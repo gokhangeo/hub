@@ -1,0 +1,2 @@
+Bulutsuz Transfer tarayıcı doğrulama dosyası.
+SHA-256 ve alıcı ACK akışı bu dosyayla sınanır.

@@ -26,7 +26,26 @@ export function normalizeCode(value = '') {
 }
 
 export function isValidCode(value) {
-  return CODE_PATTERN.test(normalizeCode(value));
+  const raw = String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return (raw.startsWith('BT') ? raw.length === 18 : raw.length === 16) && CODE_PATTERN.test(normalizeCode(value));
+}
+
+// Both the original invitation URLs and sender QR URLs stay compatible.
+export function codeFromLink(value, base = 'https://localhost/') {
+  try {
+    const url = new URL(value, base);
+    const code = url.searchParams.get('receive') || url.searchParams.get('join') || '';
+    return isValidCode(code) ? normalizeCode(code) : '';
+  } catch { return isValidCode(value) ? normalizeCode(value) : ''; }
+}
+
+export function receiveLink(base, code) {
+  if (!isValidCode(code)) throw new Error('Geçersiz cihaz kodu.');
+  const url = new URL(base);
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('receive', normalizeCode(code));
+  return url.toString();
 }
 
 export function createTransferId(random = globalThis.crypto) {

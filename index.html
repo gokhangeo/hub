@@ -3,6 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Bulutsuz Transfer" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png" />
     <meta name="theme-color" content="#4338ca" />
     <meta name="description" content="Tarayıcılar arasında şifreli ve doğrudan dosya aktarımı." />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https: wss: stun: turn:; media-src 'self' blob:; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" />
@@ -10,7 +15,7 @@
     <link rel="icon" href="./icons/app-icon.svg" type="image/svg+xml" />
     <title>Bulutsuz Transfer</title>
   </head>
-  <body>
+  <body data-mode="home">
     <a class="skip-link" href="#main">Ana içeriğe geç</a>
     <header class="topbar">
       <div class="shell topbar__inner">
@@ -33,14 +38,31 @@
         <span id="network-badge" class="badge">Ağ kontrol ediliyor</span>
       </section>
 
+      <section id="home-panel" class="home-panel" aria-labelledby="home-title">
+        <h1 id="home-title">Dosyanı seç, QR’ı paylaş.</h1>
+        <p>Dosyalarınız buluta yüklenmez. Cihazlar arasında şifreli aktarılır.</p>
+        <div class="home-actions">
+          <button id="send-button" class="button button--primary big-action" type="button"><span aria-hidden="true">↑</span> Dosya Gönder</button>
+          <button id="receive-button" class="button button--quiet big-action" type="button"><span aria-hidden="true">↓</span> Dosya Al</button>
+        </div>
+        <button id="code-button" class="button button--quiet code-action" type="button">Kod ile bağlan</button>
+      </section>
+      <div id="ios-install-tip" class="notice notice--info" hidden>
+        <div><p>Bulutsuz Transfer’i sık kullanıyorsanız Ana Ekrana ekleyebilirsiniz.</p><button id="ios-install-how" class="button button--quiet" type="button">Nasıl?</button></div>
+        <button id="ios-install-dismiss" class="icon-button" type="button" aria-label="Ana ekrana ekleme önerisini kapat">×</button>
+      </div>
+      <p id="keep-open-note" class="help keep-open-note" hidden>Aktarım boyunca iki cihazda da bu ekranı açık tutun. Ekran kilidi veya arka plana geçiş bağlantıyı kesebilir.</p>
+      <button id="back-home" class="button button--quiet" type="button" hidden>Ana ekran</button>
       <div id="shared-files-banner" class="notice notice--info" hidden>
         <div><strong>Telefondan paylaşılan dosyalar hazır</strong><p id="shared-files-summary"></p></div>
-        <button id="shared-files-dismiss" class="button button--quiet" type="button">Kapat</button>
+        <button id="shared-files-dismiss" class="button button--quiet" type="button">İptal</button>
       </div>
 
       <div class="layout">
         <section class="panel identity-panel" aria-labelledby="identity-title">
-          <div class="section-heading"><span class="step">1</span><div><h1 id="identity-title">Bu cihaz</h1><p>Bağlantı davetini diğer cihazla paylaşın.</p></div></div>
+          <div class="section-heading"><span class="step" aria-hidden="true">↑</span><div><h2 id="identity-title">QR ile Gönder</h2><p id="sender-instruction">Diğer cihazın kamerasıyla QR kodu okutun.</p></div></div>
+          <p id="session-files" class="session-files"></p>
+          <p id="session-privacy" class="help">Bağlantıyı açan ilk cihaz dosyaları alabilir. Yalnızca alıcıyla paylaşın.</p>
           <div class="qr-wrap">
             <canvas id="qr-canvas" width="220" height="220" aria-label="Cihaz bağlantı QR kodu"></canvas>
             <div id="qr-loading" class="qr-loading">QR kod hazırlanıyor…</div>
@@ -53,13 +75,14 @@
           <p id="code-help" class="help">Kod tek kullanımlık oturum kimliğidir. Yalnızca güvendiğiniz kişiyle paylaşın.</p>
           <div class="button-row">
             <button id="share-link" class="button button--primary" type="button">Bağlantıyı paylaş</button>
+            <button id="session-cancel" class="button button--danger" type="button">İptal</button>
             <button id="renew-code" class="button button--quiet" type="button">Kodu yenile</button>
           </div>
         </section>
 
         <div class="stack">
-          <section class="panel" aria-labelledby="connect-title">
-            <div class="section-heading"><span class="step">2</span><div><h2 id="connect-title">Cihaza bağlan</h2><p>Kodu girin, bağlantıyı tarayın veya QR görseli yükleyin.</p></div></div>
+          <section id="connection-panel" class="panel" aria-labelledby="connect-title">
+            <div class="section-heading"><span class="step">2</span><div><h2 id="connect-title">Dosya Al</h2><p>Kodu girin, bağlantıyı tarayın veya QR görseli yükleyin.</p></div></div>
             <label class="field-label" for="peer-code">Hedef cihaz kodu</label>
             <div class="connect-row">
               <input id="peer-code" class="code-input" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="BT-XXXX-XXXX-XXXX-XXXX" />
@@ -78,7 +101,7 @@
             </div>
           </section>
 
-          <section id="send-panel" class="panel panel--disabled" aria-labelledby="send-title" aria-disabled="true">
+          <section id="send-panel" class="panel" aria-labelledby="send-title">
             <div class="section-heading"><span class="step">3</span><div><h2 id="send-title">Dosya gönder</h2><p>Alıcı onayladıktan sonra aktarım başlar.</p></div></div>
             <div id="drop-zone" class="drop-zone" role="button" tabindex="0" aria-describedby="drop-help">
               <span class="drop-zone__icon" aria-hidden="true">⇧</span>
@@ -99,7 +122,7 @@
 
       <section class="trust-grid" aria-label="Güvenlik özellikleri">
         <article><strong>Şifreli kanal</strong><p>WebRTC veri kanalı DTLS ile şifrelenir.</p></article>
-        <article><strong>Alıcı onayı</strong><p>Dosya adı ve boyutu görülmeden aktarım başlamaz.</p></article>
+        <article><strong>Güvenli davet</strong><p>QR veya bağlantıyı yalnızca alıcıyla paylaşın. Kodla bağlantıda cihaz onayı korunur.</p></article>
         <article><strong>SHA-256 doğrulama</strong><p>Alıcı dosyanın bütünlüğünü tamamlanmadan önce kontrol eder.</p></article>
         <article><strong>Kurumsal ağ desteği</strong><p>Yapılandırılabilir sinyal, STUN ve TURN altyapısı.</p></article>
       </section>
@@ -107,6 +130,14 @@
 
     <footer class="footer"><div class="shell"><span>Bulutsuz Transfer</span><span>Dosyalar doğrudan veya gerektiğinde şifreli TURN rölesi üzerinden aktarılır.</span></div></footer>
 
+    <dialog id="ios-install-dialog" class="dialog">
+      <form method="dialog" class="dialog__card">
+        <h2>Ana Ekrana Ekle</h2>
+        <ol><li>Safari’de <strong>Paylaş ↑</strong> düğmesine dokunun.</li><li><strong>Ana Ekrana Ekle</strong> seçeneğini bulun.</li><li><strong>Ekle</strong> düğmesine dokunun.</li></ol>
+        <p class="help">Bundan sonra ana ekrandaki simgeyi açıp Dosya Gönder’e dokunabilirsiniz.</p>
+        <button class="button button--primary">Anladım</button>
+      </form>
+    </dialog>
     <dialog id="connection-dialog" class="dialog">
       <form method="dialog" class="dialog__card">
         <span class="dialog__icon" aria-hidden="true">⇄</span>

@@ -5,7 +5,8 @@ Bulutsuz Transfer, iki tarayıcı arasında WebRTC veri kanalıyla şifreli dosy
 ## Öne çıkanlar
 
 - 80 bitlik, `crypto.getRandomValues()` tabanlı tek kullanımlık cihaz kodu
-- Gelen cihaz ve dosya için açık kullanıcı onayı
+- Dosya seç → otomatik QR; güvenli davet ile ilk alıcıya otomatik aktarım
+- Kodla klasik bağlantıda cihaz/dosya onayı
 - Sıralı parça kontrolü, boyut sınırı, zaman aşımı, iptal ve yeniden deneme
 - Gönderici ve alıcıda artımlı SHA-256 bütünlük doğrulaması
 - Büyük dosyalarda desteklenen masaüstü tarayıcılarda doğrudan diske yazma
@@ -33,11 +34,58 @@ Derlenen dosyalar `dist/` klasörüne yazılır.
 
 ## Mobil paylaşım hedefi
 
-Android'de Chromium tabanlı destekleyen bir tarayıcıdan siteyi **Uygulamayı kur** ile kurun. Ardından Galeri veya Dosyalar uygulamasındaki **Paylaş** menüsünde Bulutsuz Transfer hedef olarak görünür. Seçilen dosyalar güvenli kuyruğa alınır; mevcut bir alıcı bağlantısı varsa dosya onay akışı başlar, yoksa kullanıcıdan alıcıya bağlanması istenir.
+Android'de Chromium tabanlı destekleyen bir tarayıcıdan siteyi **Uygulamayı kur** ile kurun. Ardından Galeri veya Dosyalar uygulamasındaki **Paylaş** menüsünde Bulutsuz Transfer hedef olarak görünür. Seçilen dosyalar geçici kuyruğa alınır ve otomatik QR ekranı açılır. Alıcı kamerayla QR’ı açar; uygulama kurulumu gerekmez.
 
-Web Share Target işletim sistemi tarafından PWA'yı görünür veya arka planda başlatır; tamamen çalışmayan/kurulmamış bir web sayfasının WebRTC bağlantısını sürdürmesi tarayıcı güvenlik modeli nedeniyle mümkün değildir. iOS, web uygulamalarını genel dosya paylaşım hedefi olarak aynı biçimde sunmadığından iPhone/iPad'de bağlantı veya QR ile siteyi açıp dosya seçme akışı kullanılır.
+Web Share Target, Android’de kurulu PWA’yı açar. Paylaşılan dosyalar alındığında doğrudan QR gönderim ekranına geçilir. iPhone’da Safari/PWA, PDF uygulamasının Paylaş menüsünde genel dosya hedefi oluşturamaz; aşağıdaki dosya seçme akışı kullanılır. Her iki cihazda aktarım ekranı açık kalmalıdır.
 
 Mobil paylaşım hedefi, geçici cihaz depolamasını korumak için tek istekte en fazla 20 dosya ve toplam 512 MB kabul eder. Daha büyük dosyalar uygulama açıldıktan sonra normal dosya seçiciyle gönderilebilir.
+
+## iPhone Kullanımı
+
+[HUB’ı Safari’de açın](https://gokhangeo.github.io/hub/). Kurulum isteğe bağlıdır; ilk kullanımda da dosya gönderebilirsiniz.
+
+Ana ekrana eklemek için:
+
+1. Safari’de HUB’ı açın.
+2. **Paylaş ↑** düğmesine dokunun.
+3. **Ana Ekrana Ekle** seçeneğini seçin.
+4. **Ekle** düğmesine dokunun. Bulutsuz Transfer simgesi ana ekranınıza gelir.
+
+Dosya gönderme:
+
+1. Bulutsuz Transfer’i açın ve **Dosya Gönder** düğmesine dokunun.
+2. Dosyalar seçicisinden PDF veya başka dosya seçin. iCloud Drive, iPhone’umda, İndirilenler ve etkin üçüncü taraf dosya sağlayıcıları iOS seçicisi tarafından sunulur. Dosya türü filtresi yoktur; birden fazla dosya seçebilirsiniz.
+3. Dosya adı, boyutu ve QR otomatik görünür.
+4. Diğer cihaz kendi kamerasıyla QR’ı okutup bağlantıyı açar. Kod tekrar sorulmaz.
+5. Aktarım ve SHA-256 doğrulaması tamamlanır. Alıcı **Dosyayı İndir** düğmesini kullanır. Destekleniyorsa **Paylaş / Dosyalara Kaydet** ile iOS Dosyalar’a kaydeder.
+
+Kamera yoksa **Bağlantıyı paylaş** ile oturum bağlantısını iMessage/WhatsApp gibi bir uygulamaya gönderin. Paylaşılan şey dosyanın kendisi değil oturum davetidir. Alternatif olarak alıcı **Dosya Al** ekranına mevcut güvenli BT kodunu girebilir. Windows/Mac’te dosya sürükleyip bırakmak da desteklenir.
+
+### Safari/PWA sınırları
+
+- Gönderici ve alıcı ekranlarını açık tutun. Arka plana alma, ekran kilidi veya ağ değişimi WebRTC’yi durdurabilir. Screen Wake Lock varsa bekleme/aktarım sırasında istenir; izin verilmezse uygulama çalışmaya devam eder. Kullanıcının elle ekranı kilitlemesini engellemez.
+- Safari’nin indirmeyi engellememesi için iPhone’da açık bir **Dosyayı İndir** düğmesi tutulur. Masaüstünde otomatik indirme denenir. Safari’nin dosya kaydetme/paylaşma seçenekleri dosya türüne ve iOS sürümüne bağlıdır.
+- Dosya gönderimi 64 KB parçalarla yapılır. Safari’de alım doğrudan kullanıcı diskine yazılamadığı için varsayılan toplam bellek sınırı **200 MB**’dir. 250 MB alım, `showSaveFilePicker` destekleyen masaüstü Chromium tarayıcısı gerektirir. Sınır artırılarak iPhone’da 250 MB başarı sözü verilmez.
+- İki sayfa da açık kalırsa bağlantıyı yeniden kurup göndericide **Yeniden dene** ile aynı dosyaya devam edebilirsiniz. Alıcı alınan parça indeksinden devam eder; gönderici yine dosyanın tüm SHA-256 özetini hesaplar. Sayfa kapanırsa dosyayı yeniden seçmek gerekir.
+- Varsayılan dağıtımda STUN ve genel PeerJS kullanılır; **aktif TURN hizmeti yapılandırılmamıştır**. Aynı Wi-Fi ilk test için uygundur. Mobil veri/kurumsal NAT gibi ağlar arasında bağlantı garantisi için mevcut TURN yapılandırması gerekir. Bu geliştirme yeni ücretli servis veya hesap şartı eklemez.
+
+## Otomatik ve cihaz testleri
+
+```bash
+npm run check
+npx playwright install --with-deps chromium webkit
+npm run test:browser
+```
+
+Tarayıcı testleri yerel bir PeerJS sinyal servisi ve gerçek WebRTC kullanır; test sinyal servisi yalnız SDP/ICE bilgilerini yönlendirir. Dosya sunucuya gönderilmez. Ağ arayüzü oluşturamayan kapalı CI ortamları için isteğe bağlı `BULUTSUZ_TEST_TRANSPORT=1` taşıma taklidi vardır. Bu mod PeerJS serileştirme, uygulama protokolü, dosya/hash ve kullanıcı akışlarını sınar; **DTLS/ICE veya gerçek cihaz uyumluluğunu doğrulamaz**. Üretim paketine girmez.
+
+Fiziksel cihaz matrisi ve testlerin gerçek durumu: [docs/TESTING.md](docs/TESTING.md).
+
+## GitHub Pages güncellemesi
+
+Mevcut `.github/workflows/pages.yml` korunur. Bu değişikliklerin bulunduğu branch/PR **main** ile birleştirildiğinde Actions, test ve derlemeyi çalıştırıp `dist/` klasörünü otomatik yayımlar. Pages URL’si mevcut dağıtımda `/hub/` altındadır; QR URL’si kod içinde alan adı sabitlenmeden sayfanın origin’i ve Vite base’inden üretilir. Eski `?join=` bağlantıları ve yeni `?receive=` bağlantıları birlikte desteklenir.
+
+Yayın sonrası telefonda sayfayı kapatıp yeniden açın veya Safari’de yenileyin. Yeni service worker cache sürümü eskisini temizler. Apple hesabı veya alıcıya uygulama kurulumu gerekmez.
 
 ## Kurumsal dağıtım
 
@@ -65,7 +113,8 @@ window.BULUTSUZ_CONFIG = Object.freeze({
   maxChunks: 200000,
   maxConcurrentInbound: 3,
   acceptTimeoutMs: 120000,
-  ackTimeoutMs: 120000
+  ackTimeoutMs: 120000,
+  sessionTimeoutMs: 10 * 60 * 1000
 });
 ```
 
@@ -76,10 +125,12 @@ PeerJS sinyal sunucusu dosya içeriğini taşımaz. TURN yalnızca doğrudan ba�
 ## Güvenlik modeli ve sınırlar
 
 - WebRTC veri kanalı DTLS ile şifrelenir; uygulama ayrıca dosyanın SHA-256 özetini doğrular.
-- Cihaz kodu bir oturum sırrıdır. Parmak izi iki cihazda sözlü olarak karşılaştırılmalıdır.
+- QR/link/kod 80 bitlik bir oturum sırrıdır. Dosya seçimi, bu daveti açan **ilk alıcının** dosyaları almasına izin verir; QR/link yalnızca alıcıyla paylaşılmalıdır. Elle kodla klasik bağlantı kurulurken cihaz onayı korunur.
+- 6 haneli tahmin edilebilir token veya merkezi kısa kod çözümleyicisi eklenmedi. Mevcut güvenli `BT-XXXX-XXXX-XXXX-XXXX` kodu kullanılır. Genel PeerJS üzerinde istemciye konulan hız sınırı sunucu tarafı brute-force koruması sağlayamaz; güvenlik güçlü token, tek alıcı ve oturum süresine dayanır.
 - Varsayılan bellek tabanlı indirme sınırı 200 MB'dir. Daha büyük dosyalar File System Access API destekleyen tarayıcıda doğrudan diske yazılır.
 - Ağ veya veri kanalı kesilirse, iki sayfa da açık kaldığı sürece aynı cihaz yeniden bağlanıp aktarımı alınan son parçadan sürdürebilir. Tarayıcı tamamen kapatılırsa güvenlik ve dosya izinleri nedeniyle aktarım yeniden başlatılır.
-- PWA paylaşım kuyruğu IndexedDB kullanır ve dosyalar kuyruğa alındıktan sonra ilk okumada silinir.
+- PWA paylaşım kuyruğu IndexedDB kullanır; dosyalar okunup işlem başarıyla tamamlandığında kuyruk silinir. Gönderici File referanslarını başarı/oturum iptalinde bırakır. Alıcı indirme Blob’u, dosya indirilebilsin diye **Tamamlananları temizle** veya sayfanın kapanmasına kadar tutulur; toplam bellek sınırı uygulanır.
+- Kullanılmayan oturumlar varsayılan 10 dakikada kapanır. Başarılı toplu gönderim veya oturum iptali sonunda PeerJS kimliği kapatılır. Yarım alımların devam süresi de sınırlıdır.
 
 Güvenlik bildirimi için [`SECURITY.md`](SECURITY.md) dosyasına bakın.
 

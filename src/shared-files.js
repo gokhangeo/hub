@@ -17,12 +17,15 @@ export async function takeSharedFiles() {
     const transaction = database.transaction(STORE_NAME, 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
     const request = store.getAll();
+    let files = [];
     request.onsuccess = () => {
-      const files = request.result.map((item) => new File([item.blob], item.name, { type: item.type, lastModified: item.lastModified }));
-      store.clear();
-      resolve(files);
+      try {
+        files = request.result.map((item) => new File([item.blob], item.name, { type: item.type, lastModified: item.lastModified }));
+        store.clear();
+      } catch (error) { transaction.abort(); reject(error); }
     };
-    request.onerror = () => reject(request.error);
-    transaction.oncomplete = () => database.close();
+    request.onerror = () => { database.close(); reject(request.error); };
+    transaction.oncomplete = () => { database.close(); resolve(files); };
+    transaction.onabort = transaction.onerror = () => { database.close(); reject(transaction.error || new Error('Paylaşım kuyruğu okunamadı.')); };
   });
 }

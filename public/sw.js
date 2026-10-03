@@ -1,6 +1,6 @@
-const CACHE_NAME = 'bulutsuz-transfer-v2';
+const CACHE_NAME = 'bulutsuz-transfer-v3';
 const BASE_PATH = new URL('./', self.location.href).pathname;
-const APP_SHELL = [BASE_PATH, `${BASE_PATH}manifest.webmanifest`, `${BASE_PATH}runtime-config.js`, `${BASE_PATH}icons/app-icon.svg`];
+const APP_SHELL = [BASE_PATH, `${BASE_PATH}manifest.webmanifest`, `${BASE_PATH}runtime-config.js`, `${BASE_PATH}icons/app-icon.svg`, `${BASE_PATH}icons/apple-touch-icon.png`, `${BASE_PATH}icons/app-icon-192.png`, `${BASE_PATH}icons/app-icon-512.png`];
 const DB_NAME = 'bulutsuz-transfer-share-target';
 const STORE_NAME = 'shared-files';
 const MAX_SHARED_FILES = 20;
@@ -71,7 +71,7 @@ self.addEventListener('fetch', (event) => {
       const response = await fetch(event.request);
       if (response.ok) {
         const cache = await caches.open(CACHE_NAME);
-        cache.put(event.request, response.clone());
+        if (!url.searchParams.has('receive') && !url.searchParams.has('join')) await cache.put(event.request, response.clone());
       }
       return response;
     } catch {

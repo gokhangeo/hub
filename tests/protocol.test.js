@@ -50,3 +50,17 @@ describe('uzak veri doğrulaması', () => {
     expect(validateMessage({ type: 'run-script' })).toBe(false);
   });
 });
+
+describe('QR routing compatibility', () => {
+  it('supports both legacy and new invitation URLs', async () => {
+    const { codeFromLink, receiveLink } = await import('../src/protocol.js');
+    const code='BT-ABCD-EFGH-JKMN-2345';
+    expect(codeFromLink(`https://example.com/hub/?join=${code}`)).toBe(code);
+    const url=receiveLink('https://example.com/hub/?old=value',code);
+    expect(url).toBe(`https://example.com/hub/?receive=${code}`);
+    expect(codeFromLink(url)).toBe(code);
+  });
+  it('rejects codes with trailing characters rather than truncating them', () => {
+    expect(isValidCode('BT-ABCD-EFGH-JKMN-2345AAAA')).toBe(false);
+  });
+});

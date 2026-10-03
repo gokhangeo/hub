@@ -9,5 +9,6 @@ window.BULUTSUZ_CONFIG = Object.freeze({
   maxChunks: 200000,
   maxConcurrentInbound: 3,
   acceptTimeoutMs: 120000,
-  ackTimeoutMs: 120000
+  ackTimeoutMs: 120000,
+  sessionTimeoutMs: 10 * 60 * 1000
 });

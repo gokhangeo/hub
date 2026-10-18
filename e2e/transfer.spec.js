@@ -48,6 +48,45 @@ test('multiple files use one QR and finish the one-time session',async ({page,co
   await expect(receiver.locator('.transfer-card[data-state="complete"]')).toHaveCount(2);
   await expect(page.locator('#device-code')).toHaveValue('');
 });
+test('copied text is sent through the QR flow and shown for copying',async ({page,context}) => {
+  const text='Toplantı notu: Çarşamba 14:00\nİkinci satır — ğüşıöç 🚀';
+  await ready(page);
+  await page.locator('#text-button').click();
+  await expect(page.locator('#text-dialog')).toBeVisible();
+  await expect(page.locator('#text-send')).toBeDisabled();
+  await page.locator('#text-input').fill(text);
+  await page.locator('#text-send').click();
+  await expect(page.locator('body')).toHaveAttribute('data-mode','send');
+  await expect(page.locator('#session-files')).toContainText('Kopyalanan metin');
+  const code=await page.locator('#device-code').inputValue();
+  const receiver=await context.newPage();
+  await receiver.goto(`/?receive=${code}`);
+  await expect(receiver.locator('.transfer-card[data-state="complete"]')).toHaveCount(1);
+  await expect(receiver.locator('.text-preview')).toHaveValue(text);
+  await expect(receiver.locator('.copy-text-action')).toBeVisible();
+  await expect(receiver.locator('a.download-action')).toHaveCount(0);
+  await expect(page.locator('.transfer-card[data-state="complete"]')).toHaveCount(1);
+});
+test('pasting text on the home screen opens the text dialog',async ({page}) => {
+  await ready(page);
+  await page.evaluate(()=> {
+    const data=new DataTransfer();data.setData('text/plain','yapıştırılan metin');
+    document.body.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true}));
+  });
+  await expect(page.locator('#text-dialog')).toBeVisible();
+  await expect(page.locator('#text-input')).toHaveValue('yapıştırılan metin');
+});
+test('Android share target queues shared text as a text transfer',async ({page}) => {
+  await ready(page);await page.evaluate(()=>navigator.serviceWorker.ready);await page.reload();
+  await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
+  const redirect=await page.evaluate(async ()=> {
+    const form=new FormData();form.append('text','Android panodan paylaşılan metin');
+    const response=await fetch('/share-target',{method:'POST',body:form});return response.url;
+  });
+  await page.goto(redirect);
+  await expect(page.locator('body')).toHaveAttribute('data-mode','send');
+  await expect(page.locator('#session-files')).toContainText('Kopyalanan metin');
+});
 test('session cancel invalidates its code and releases the queue',async ({page}) => {
   await ready(page);await page.locator('#file-input').setInputFiles(await filePayload(1));
   await page.locator('#session-cancel').click();await expect(page.locator('#device-code')).toHaveValue('');

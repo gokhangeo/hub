@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CHUNK_SIZE, createTransferId, generateSecureCode, isValidCode,
+  CHUNK_SIZE, TEXT_MAX_BYTES, createTransferId, generateSecureCode, isValidCode,
   normalizeCode, sanitizeFilename, validateMetadata, validateMessage
 } from '../src/protocol.js';
 
@@ -44,6 +44,14 @@ describe('uzak veri doğrulaması', () => {
 
   it('dosya adındaki HTML ve yol karakterlerini zararsızlaştırır', () => {
     expect(sanitizeFilename('../<img onerror=alert(1)>.txt')).toBe('__img onerror=alert(1)_.txt');
+  });
+
+  it('kopyalanan metin türünü yalnız küçük boyutta işaretler', () => {
+    const meta = { type: 'file-meta', id: 'c'.repeat(24), name: 'kopyalanan-metin.txt', size: 12, mime: 'text/plain;charset=utf-8', totalChunks: 1, kind: 'text' };
+    expect(validateMetadata(meta, limits)).toEqual({ ok: true, name: 'kopyalanan-metin.txt', kind: 'text' });
+    const large = { ...meta, size: TEXT_MAX_BYTES + 1, totalChunks: Math.ceil((TEXT_MAX_BYTES + 1) / CHUNK_SIZE) };
+    expect(validateMetadata(large, limits)).toEqual({ ok: true, name: 'kopyalanan-metin.txt' });
+    expect(validateMetadata({ ...meta, kind: 'script' }, limits).ok).toBe(false);
   });
 
   it('bilinmeyen protokol mesajını reddeder', () => {

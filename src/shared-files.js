@@ -20,7 +20,11 @@ export async function takeSharedFiles() {
     let files = [];
     request.onsuccess = () => {
       try {
-        files = request.result.map((item) => new File([item.blob], item.name, { type: item.type, lastModified: item.lastModified }));
+        files = request.result.map((item) => {
+          const file = new File([item.blob], item.name, { type: item.type, lastModified: item.lastModified });
+          if (item.kind === 'text') Object.defineProperty(file, 'isSharedText', { value: true });
+          return file;
+        });
         store.clear();
       } catch (error) { transaction.abort(); reject(error); }
     };

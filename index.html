@@ -45,7 +45,10 @@
           <button id="send-button" class="button button--primary big-action" type="button"><span aria-hidden="true">↑</span> Dosya Gönder</button>
           <button id="receive-button" class="button button--quiet big-action" type="button"><span aria-hidden="true">↓</span> Dosya Al</button>
         </div>
-        <button id="code-button" class="button button--quiet code-action" type="button">Kod ile bağlan</button>
+        <div class="home-secondary">
+          <button id="text-button" class="button button--quiet code-action" type="button"><span aria-hidden="true">¶</span> Kopyalanan Metni Gönder</button>
+          <button id="code-button" class="button button--quiet code-action" type="button">Kod ile bağlan</button>
+        </div>
       </section>
       <div id="ios-install-tip" class="notice notice--info" hidden>
         <div><p>Bulutsuz Transfer’i sık kullanıyorsanız Ana Ekrana ekleyebilirsiniz.</p><button id="ios-install-how" class="button button--quiet" type="button">Nasıl?</button></div>
@@ -110,6 +113,7 @@
               <button class="button button--primary" type="button" tabindex="-1">Dosya seç</button>
               <input id="file-input" type="file" multiple hidden />
             </div>
+            <button id="send-text-button" class="button button--quiet send-text-action" type="button"><span aria-hidden="true">¶</span> Kopyalanan metni gönder</button>
             <p id="transfer-limit" class="help"></p>
           </section>
         </div>
@@ -151,11 +155,23 @@
     <dialog id="receive-dialog" class="dialog">
       <form method="dialog" class="dialog__card">
         <span class="dialog__icon" aria-hidden="true">↓</span>
-        <h2>Dosya alma isteği</h2>
+        <h2 id="receive-title">Dosya alma isteği</h2>
         <p id="receive-file-name" class="dialog__filename"></p>
         <p id="receive-file-size" class="help"></p>
         <p id="receive-storage-note" class="help"></p>
         <div class="button-row"><button id="receive-reject" class="button button--danger" value="reject">Reddet</button><button id="receive-accept" class="button button--primary" value="accept">Kabul et ve kaydet</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="text-dialog" class="dialog">
+      <form method="dialog" class="dialog__card dialog__card--wide">
+        <span class="dialog__icon" aria-hidden="true">¶</span>
+        <h2>Kopyalanan metni gönder</h2>
+        <p class="help">Metni yapıştırın. Buluta yüklenmez; QR ile bağlanan cihaza şifreli gönderilir ve orada tek dokunuşla kopyalanır.</p>
+        <label class="field-label" for="text-input">Metin</label>
+        <textarea id="text-input" class="text-input" rows="8" spellcheck="false" placeholder="Kopyaladığınız metni buraya yapıştırın"></textarea>
+        <p id="text-count" class="help"></p>
+        <div class="button-row"><button id="text-paste" class="button button--quiet" type="button">Panodan yapıştır</button><button class="button button--quiet" value="cancel">Vazgeç</button><button id="text-send" class="button button--primary" value="send">Gönder</button></div>
       </form>
     </dialog>
 

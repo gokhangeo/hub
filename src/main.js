@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import { createSHA256 } from 'hash-wasm';
 import './styles.css';
 import {
-  CHUNK_SIZE, PROTOCOL_VERSION,
+  CHUNK_SIZE, PROTOCOL_VERSION, TEXT_MAX_BYTES,
   connectionFingerprint, createTransferId, formatBytes, formatDuration,
   generateSecureCode, isValidCode, normalizeCode, sanitizeFilename,
   validateMessage, validateMetadata, codeFromLink, receiveLink
@@ -56,6 +56,8 @@ let queuedSendCount = 0;
 let peerGeneration = 0;
 const downloadSizes = new Map();
 const pausedTimers = new Map();
+const textFiles = new WeakSet();
+const TEXT_FILE_NAME = 'kopyalanan-metin.txt';
 
 function setMode(mode) {
   document.body.dataset.mode = mode;
@@ -416,7 +418,7 @@ async function processFiles(files) {
   });
   if (!list.length) return;
   setMode('send');
-  const summary = list.map((f) => `${sanitizeFilename(f.name)} · ${formatBytes(f.size)}`).join('\n');
+  const summary = list.map((f) => textFiles.has(f) ? `Kopyalanan metin · ${formatBytes(f.size)}` : `${sanitizeFilename(f.name)} · ${formatBytes(f.size)}`).join('\n');
   $('session-files').textContent = summary;
   if (matchMedia('(max-width: 560px)').matches) requestAnimationFrame(() => document.querySelector('.identity-panel').scrollIntoView({ block: 'start' }));
   if (!currentConnection?.open) {
@@ -446,7 +448,7 @@ async function sendFile(file, existingId) {
 
   try {
     const acceptPromise = waitForResponse(`${id}:accept`, CONFIG.acceptTimeoutMs);
-    connection.send({ type: 'file-meta', id, name: file.name, size: file.size, mime: file.type || 'application/octet-stream', totalChunks, version: PROTOCOL_VERSION });
+    connection.send({ type: 'file-meta', id, name: file.name, size: file.size, mime: file.type || 'application/octet-stream', totalChunks, version: PROTOCOL_VERSION, ...(textFiles.has(file) ? { kind: 'text' } : {}) });
     const accepted = await acceptPromise;
     if (accepted.type !== 'file-accepted') throw new Error(accepted.reason || 'Alıcı dosyayı reddetti.');
     const resumeFrom = Number.isSafeInteger(accepted.resumeFrom) ? Math.max(0, Math.min(totalChunks, accepted.resumeFrom)) : 0;
@@ -482,8 +484,9 @@ async function sendFile(file, existingId) {
     if (acknowledgement.type !== 'file-ack' || acknowledgement.hash !== hash || transfer.cancelled) throw new Error(acknowledgement.reason || 'Alıcı doğrulaması başarısız.');
     transfer.state = 'complete';
     if (sendSession) sendSession.completed += 1;
-    updateTransferCard(id, { state: 'complete', label: '✓ Dosya gönderildi · doğrulandı', percent: 100 });
-    showToast(`“${sanitizeFilename(file.name)}” doğrulanarak alındı.`, 'success');
+    const isText = textFiles.has(file);
+    updateTransferCard(id, { state: 'complete', label: isText ? '✓ Metin gönderildi · doğrulandı' : '✓ Dosya gönderildi · doğrulandı', percent: 100 });
+    showToast(isText ? 'Metin doğrulanarak alındı.' : `“${sanitizeFilename(file.name)}” doğrulanarak alındı.`, 'success');
     transfer.file = null;
   } catch (error) {
     transfer.state = 'failed';
@@ -518,7 +521,7 @@ async function handleTransferMessage(message) {
 function enqueueIncomingMetadata(meta) {
   const validation = validateMetadata(meta, CONFIG);
   const existing = inboundTransfers.get(meta.id);
-  if (validation.ok && existing?.state === 'paused' && existing.peerId === currentConnection.peer && existing.size === meta.size && existing.totalChunks === meta.totalChunks && existing.safeName === validation.name) {
+  if (validation.ok && existing?.state === 'paused' && existing.kind === validation.kind && existing.peerId === currentConnection.peer && existing.size === meta.size && existing.totalChunks === meta.totalChunks && existing.safeName === validation.name) {
     clearTimeout(pausedTimers.get(meta.id)); pausedTimers.delete(meta.id);
     existing.connection = currentConnection;
     existing.state = 'receiving';
@@ -537,8 +540,8 @@ function enqueueIncomingMetadata(meta) {
     currentConnection.send({ type: 'file-rejected', id: meta.id, reason: 'Aynı anda çok fazla dosya alınıyor.' });
     return;
   }
-  receiveQueue.push({ ...meta, safeName: validation.name });
-  createTransferCard({ id: meta.id, file: { name: validation.name, size: meta.size } }, 'incoming');
+  receiveQueue.push({ ...meta, safeName: validation.name, kind: validation.kind });
+  createTransferCard({ id: meta.id, kind: validation.kind, file: { name: validation.name, size: meta.size } }, 'incoming');
   updateTransferCard(meta.id, { state: 'waiting', label: 'Onay bekliyor' });
   showNextReceiveRequest();
 }
@@ -546,13 +549,16 @@ function enqueueIncomingMetadata(meta) {
 function showNextReceiveRequest() {
   if (currentReceiveRequest || !receiveQueue.length) return;
   currentReceiveRequest = receiveQueue.shift();
-  $('receive-file-name').textContent = currentReceiveRequest.safeName;
-  $('receive-file-size').textContent = `${formatBytes(currentReceiveRequest.size)} · ${currentReceiveRequest.mime || 'Bilinmeyen tür'}`;
+  const isText = currentReceiveRequest.kind === 'text';
+  $('receive-title').textContent = isText ? 'Metin alma isteği' : 'Dosya alma isteği';
+  $('receive-accept').textContent = isText ? 'Kabul et' : 'Kabul et ve kaydet';
+  $('receive-file-name').textContent = isText ? 'Kopyalanan metin' : currentReceiveRequest.safeName;
+  $('receive-file-size').textContent = isText ? formatBytes(currentReceiveRequest.size) : `${formatBytes(currentReceiveRequest.size)} · ${currentReceiveRequest.mime || 'Bilinmeyen tür'}`;
   const needsDisk = currentReceiveRequest.size > CONFIG.maxMemoryFileBytes;
   if (joiningFromLink && !needsDisk) { acceptReceiveRequest(); return; }
   $('receive-storage-note').textContent = needsDisk
     ? ('showSaveFilePicker' in window ? 'Büyük dosya doğrudan seçtiğiniz konuma yazılacak.' : `Bu tarayıcı doğrudan disk yazmayı desteklemiyor; ${formatBytes(CONFIG.maxMemoryFileBytes)} sınırı uygulanır.`)
-    : 'Dosya SHA-256 ile doğrulandıktan sonra indirilecek.';
+    : isText ? 'Metin SHA-256 ile doğrulandıktan sonra burada gösterilecek.' : 'Dosya SHA-256 ile doğrulandıktan sonra indirilecek.';
   $('receive-dialog').showModal();
 }
 
@@ -580,7 +586,7 @@ async function acceptReceiveRequest(event) {
       peerId: currentConnection.peer, connection: currentConnection, pendingWriteBytes: 0
     });
     currentConnection.send({ type: 'file-accepted', id: meta.id });
-    setStatus(`${meta.safeName} dosyası geliyor…`, 'busy');
+    setStatus(meta.kind === 'text' ? 'Metin geliyor…' : `${meta.safeName} dosyası geliyor…`, 'busy');
     updateWakeLock();
     updateTransferCard(meta.id, { state: 'receiving', label: 'Alınıyor' });
     closeReceiveDialog();
@@ -636,13 +642,15 @@ async function finishIncomingTransfer(message) {
     if (transfer.receivedBytes !== transfer.size || transfer.expectedIndex !== transfer.totalChunks || message.bytes !== transfer.size || message.totalChunks !== transfer.totalChunks) throw new Error('Dosya eksik alındı.');
     const calculatedHash = transfer.hasher.digest('hex');
     if (!/^[a-f0-9]{64}$/.test(message.hash) || calculatedHash !== message.hash) throw new Error('Dosya aktarımı tamamlandı ancak bütünlük doğrulaması başarısız.');
+    const isText = transfer.kind === 'text' && !transfer.writable;
     if (transfer.writable) await transfer.writable.close();
+    else if (isText) showReceivedText(await new Blob(transfer.chunks).text(), transfer.id);
     else downloadBlob(new Blob(transfer.chunks, { type: transfer.mime || 'application/octet-stream' }), transfer.safeName, transfer.id);
     transfer.state = 'complete';
-    setStatus('✓ Dosya alındı ve doğrulandı', 'ready');
-    updateTransferCard(transfer.id, { state: 'complete', label: '✓ Dosya alındı · doğrulandı', percent: 100 });
+    setStatus(isText ? '✓ Metin alındı ve doğrulandı' : '✓ Dosya alındı ve doğrulandı', 'ready');
+    updateTransferCard(transfer.id, { state: 'complete', label: isText ? '✓ Metin alındı · doğrulandı' : '✓ Dosya alındı · doğrulandı', percent: 100 });
     transfer.connection.send({ type: 'file-ack', id: transfer.id, hash: calculatedHash });
-    showToast(`“${transfer.safeName}” doğrulanarak kaydedildi.`, 'success');
+    if (!isText) showToast(`“${transfer.safeName}” doğrulanarak kaydedildi.`, 'success');
     transfer.chunks = null;
     inboundTransfers.delete(transfer.id);
     updateWakeLock();
@@ -670,6 +678,77 @@ function cancelIncomingTransfer(id, reason) {
   if (currentReceiveRequest?.id === id) { updateTransferCard(id, { state: 'failed', label: reason }); closeReceiveDialog(); }
   const transfer = inboundTransfers.get(id);
   if (transfer) failIncomingTransfer(transfer, reason);
+}
+
+async function copyText(text, fallbackElement) {
+  try { await navigator.clipboard.writeText(text); return true; } catch {}
+  if (!fallbackElement) return false;
+  // Older Safari and unfocused pages reject the async clipboard API.
+  fallbackElement.focus();
+  fallbackElement.select();
+  try { return document.execCommand('copy'); } catch { return false; }
+}
+
+function showReceivedText(text, id) {
+  const card = transferCards.get(id)?.card;
+  if (!card) return;
+  const preview = document.createElement('textarea');
+  preview.className = 'text-preview';
+  preview.readOnly = true;
+  preview.value = text;
+  preview.setAttribute('aria-label', 'Alınan metin');
+  preview.rows = Math.min(12, Math.max(3, text.split('\n').length));
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.className = 'button button--primary download-action copy-text-action';
+  copy.textContent = 'Metni kopyala';
+  copy.addEventListener('click', async () => {
+    const copied = await copyText(text, preview);
+    showToast(copied ? 'Metin panoya kopyalandı.' : 'Metni seçip elle kopyalayın.', copied ? 'success' : 'info');
+  });
+  card.append(preview, copy);
+  if (navigator.share) {
+    const share = document.createElement('button');
+    share.type = 'button';
+    share.className = 'button button--quiet download-action';
+    share.textContent = 'Paylaş';
+    share.addEventListener('click', async () => { try { await navigator.share({ text }); } catch (error) { if (error.name !== 'AbortError') showToast('Metin paylaşılamadı. Metni kopyala düğmesini kullanın.', 'error'); } });
+    card.append(share);
+  }
+  copyText(text).then((copied) => showToast(copied ? 'Metin alındı ve panoya kopyalandı.' : 'Metin alındı. Metni kopyala düğmesine dokunun.', 'success'));
+}
+
+function textByteLength(text) { return new TextEncoder().encode(text).byteLength; }
+
+function updateTextCount() {
+  const text = $('text-input').value;
+  const bytes = textByteLength(text);
+  $('text-count').textContent = `${text.length.toLocaleString('tr-TR')} karakter · ${formatBytes(bytes)} / ${formatBytes(TEXT_MAX_BYTES)}`;
+  $('text-send').disabled = !text.trim() || bytes > TEXT_MAX_BYTES;
+}
+
+async function pasteFromClipboard() {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text) showToast('Panoda metin bulunamadı.');
+    else { $('text-input').value = text; updateTextCount(); }
+  } catch { showToast('Pano okunamadı. Metin alanına basılı tutup Yapıştır seçin.'); }
+  $('text-input').focus();
+}
+
+function openTextDialog(text = '') {
+  $('text-input').value = text;
+  updateTextCount();
+  $('text-dialog').showModal();
+  $('text-input').focus();
+}
+
+function sendText(text) {
+  if (!text.trim()) return showToast('Göndermek için metin yapıştırın.', 'error');
+  if (textByteLength(text) > TEXT_MAX_BYTES) return showToast(`Metin en fazla ${formatBytes(TEXT_MAX_BYTES)} olabilir. Daha uzun metni dosya olarak gönderin.`, 'error');
+  const file = new File([text], TEXT_FILE_NAME, { type: 'text/plain;charset=utf-8' });
+  textFiles.add(file);
+  processFiles([file]);
 }
 
 function downloadBlob(blob, filename, id) {
@@ -710,7 +789,7 @@ function createTransferCard(transfer, direction) {
   const nameWrap = document.createElement('div');
   nameWrap.className = 'transfer-card__name';
   const name = document.createElement('strong');
-  name.textContent = sanitizeFilename(transfer.file.name);
+  name.textContent = transfer.kind === 'text' || textFiles.has(transfer.file) ? 'Kopyalanan metin' : sanitizeFilename(transfer.file.name);
   name.title = name.textContent;
   const meta = document.createElement('div');
   meta.className = 'transfer-card__meta';
@@ -884,6 +963,7 @@ async function loadSharedFiles() {
   }
   try {
     const files = await takeSharedFiles();
+    for (const file of files) if (file.isSharedText && file.size <= TEXT_MAX_BYTES) textFiles.add(file);
     if (files.length) {
       await processFiles(files);
       showToast(`${files.length} paylaşılan dosya hazır. QR kodu alıcıya okutun.`, 'success');
@@ -932,6 +1012,28 @@ function initTheme() {
 function bindEvents() {
   $('send-button').addEventListener('click', () => $('file-input').click());
   $('receive-button').addEventListener('click', () => { setMode('receive'); if (!peer || peer.destroyed) initPeer(); $('peer-code').focus(); });
+  $('text-button').addEventListener('click', () => openTextDialog());
+  $('send-text-button').addEventListener('click', () => openTextDialog());
+  $('text-input').addEventListener('input', updateTextCount);
+  $('text-paste').addEventListener('click', pasteFromClipboard);
+  $('text-send').addEventListener('click', (event) => {
+    event.preventDefault();
+    const text = $('text-input').value;
+    if (!text.trim() || textByteLength(text) > TEXT_MAX_BYTES) return updateTextCount();
+    $('text-dialog').close();
+    $('text-input').value = '';
+    sendText(text);
+  });
+  // Ctrl/Cmd+V outside a field: pasted files go to the file flow, plain text opens the text dialog.
+  document.addEventListener('paste', (event) => {
+    if (document.body.dataset.mode === 'receive' || event.target.closest?.('input, textarea, [contenteditable]') || document.querySelector('dialog[open]')) return;
+    const files = Array.from(event.clipboardData?.files || []);
+    const text = event.clipboardData?.getData('text/plain') || '';
+    if (!files.length && !text) return;
+    event.preventDefault();
+    if (files.length) processFiles(files);
+    else openTextDialog(text);
+  });
   $('code-button').addEventListener('click', () => { setMode('receive'); if (!peer || peer.destroyed) initPeer(); $('peer-code').focus(); });
   $('session-cancel').addEventListener('click', () => cancelSendSession());
   $('back-home').addEventListener('click', async () => { await cancelSendSession(); joiningFromLink = false; history.replaceState(null, '', import.meta.env.BASE_URL); setMode('home'); });

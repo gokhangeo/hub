@@ -1,6 +1,8 @@
 export const PROTOCOL_VERSION = 2;
 export const CHUNK_SIZE = 64 * 1024;
 export const MAX_BUFFERED_AMOUNT = 1024 * 1024;
+// Copied text is sent as a small UTF-8 file and shown in place instead of downloaded.
+export const TEXT_MAX_BYTES = 1024 * 1024;
 export const CODE_PATTERN = /^BT-(?:[A-HJ-NP-Z2-9]{4}-){3}[A-HJ-NP-Z2-9]{4}$/;
 
 const SAFE_NAME_MAX = 180;
@@ -75,7 +77,9 @@ export function validateMetadata(meta, limits) {
   if (!Number.isSafeInteger(meta.totalChunks) || meta.totalChunks !== expectedChunks || meta.totalChunks > limits.maxChunks) return { ok: false, reason: 'Parça bilgisi geçersiz.' };
   if (typeof meta.name !== 'string' || !meta.name.trim() || meta.name.length > SAFE_NAME_MAX * 2) return { ok: false, reason: 'Dosya adı geçersiz.' };
   if (typeof meta.mime !== 'string' || meta.mime.length > 160) return { ok: false, reason: 'Dosya türü geçersiz.' };
-  return { ok: true, name: sanitizeFilename(meta.name) };
+  if (meta.kind !== undefined && meta.kind !== 'text') return { ok: false, reason: 'Aktarım türü geçersiz.' };
+  const name = sanitizeFilename(meta.name);
+  return meta.kind === 'text' && meta.size <= TEXT_MAX_BYTES ? { ok: true, name, kind: 'text' } : { ok: true, name };
 }
 
 export function formatBytes(bytes, decimals = 1) {

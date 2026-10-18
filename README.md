@@ -61,6 +61,14 @@ Dosya gönderme:
 
 Kamera yoksa **Bağlantıyı paylaş** ile oturum bağlantısını iMessage/WhatsApp gibi bir uygulamaya gönderin. Paylaşılan şey dosyanın kendisi değil oturum davetidir. Alternatif olarak alıcı **Dosya Al** ekranına mevcut güvenli BT kodunu girebilir. Windows/Mac’te dosya sürükleyip bırakmak da desteklenir.
 
+Kopyalanan metni gönderme:
+
+1. Ana ekranda **Kopyalanan Metni Gönder** düğmesine dokunun (masaüstünde ana ekranda doğrudan Ctrl/Cmd+V de olur).
+2. **Panodan yapıştır** ile veya alana basılı tutup yapıştırarak metni ekleyin, **Gönder**’e dokunun.
+3. QR aynı şekilde oluşur. Alıcıda metin SHA-256 ile doğrulanır, kartta gösterilir ve **Metni kopyala** ile panoya alınır; tarayıcı izin verirse otomatik kopyalanır.
+
+Metin sınırı 1 MB’dir. Android’de başka bir uygulamadan **Paylaş** ile gönderilen metin de bu akışa düşer.
+
 ### Safari/PWA sınırları
 
 - Gönderici ve alıcı ekranlarını açık tutun. Arka plana alma, ekran kilidi veya ağ değişimi WebRTC’yi durdurabilir. Screen Wake Lock varsa bekleme/aktarım sırasında istenir; izin verilmezse uygulama çalışmaya devam eder. Kullanıcının elle ekranı kilitlemesini engellemez.

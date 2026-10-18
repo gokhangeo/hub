@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bulutsuz-transfer-v3';
+const CACHE_NAME = 'bulutsuz-transfer-v4';
 const BASE_PATH = new URL('./', self.location.href).pathname;
 const APP_SHELL = [BASE_PATH, `${BASE_PATH}manifest.webmanifest`, `${BASE_PATH}runtime-config.js`, `${BASE_PATH}icons/app-icon.svg`, `${BASE_PATH}icons/apple-touch-icon.png`, `${BASE_PATH}icons/app-icon-192.png`, `${BASE_PATH}icons/app-icon-512.png`];
 const DB_NAME = 'bulutsuz-transfer-share-target';
@@ -15,7 +15,7 @@ function openDatabase() {
   });
 }
 
-async function storeSharedFiles(files) {
+async function storeSharedFiles(files, textFile = null) {
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   if (files.length > MAX_SHARED_FILES || totalBytes > MAX_SHARED_BYTES) throw new Error('share_limit');
   if (self.navigator?.storage?.estimate) {
@@ -27,7 +27,7 @@ async function storeSharedFiles(files) {
     const transaction = database.transaction(STORE_NAME, 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
     for (const file of files) {
-      store.add({ blob: file, name: file.name, type: file.type, lastModified: file.lastModified });
+      store.add({ blob: file, name: file.name, type: file.type, lastModified: file.lastModified, ...(file === textFile ? { kind: 'text' } : {}) });
     }
     transaction.oncomplete = resolve;
     transaction.onerror = () => reject(transaction.error);
@@ -54,7 +54,11 @@ self.addEventListener('fetch', (event) => {
       try {
         const formData = await event.request.formData();
         const files = formData.getAll('files').filter((value) => value instanceof File && value.size >= 0);
-        if (files.length) await storeSharedFiles(files);
+        // Android shares copied text through the text/url fields; queue it as a text transfer.
+        const sharedText = ['title', 'text', 'url'].map((key) => formData.get(key)).filter((value) => typeof value === 'string' && value.trim()).join('\n');
+        const textFile = !files.length && sharedText ? new File([sharedText], 'kopyalanan-metin.txt', { type: 'text/plain;charset=utf-8' }) : null;
+        if (textFile) files.push(textFile);
+        if (files.length) await storeSharedFiles(files, textFile);
         return Response.redirect(`${BASE_PATH}?share-target=1`, 303);
       } catch (error) {
         const reason = error?.message === 'share_limit' ? 'limit' : error?.message === 'storage_quota' ? 'quota' : 'unknown';

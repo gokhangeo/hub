@@ -128,6 +128,15 @@ window.BULUTSUZ_CONFIG = Object.freeze({
 
 `iceServersUrl`, coturn'un paylaşılan sırrını tarayıcıya vermeden kısa ömürlü TURN kullanıcı adı ve parolası döndürmelidir. Örnek servis ve ters proxy ayarları [`infra/`](infra/) klasöründedir. Üretimde TURN sırrını Git'e veya frontend dosyalarına koymayın.
 
+Ek seçenekler:
+
+- `iceServersCredentials`: `iceServersUrl` isteğinin çerez davranışı (`'include'` varsayılan). Barındırılan TURN API’leri (ör. Metered) için `'omit'` kullanın; bu servisler `{ iceServers: [...] }` yerine doğrudan dizi döndürebilir, ikisi de kabul edilir.
+- `iceTransportPolicy: 'relay'`: Tüm trafiği TURN üzerinden zorlar; yalnız tanı veya çok sıkı ağ politikası için.
+
+Kendi sunucunuz yoksa GitHub Pages sürümü için ücretsiz kotalı barındırılan bir TURN hizmetinin süreli kimlik URL’si `iceServersUrl` olarak verilebilir. Bu URL’deki API anahtarı tarayıcıda görünür; sağlayıcı panelinde alan adı kısıtlaması (`gokhangeo.github.io`) açın. Kurum ağında çalışması için listede `turns:…:443?transport=tcp` girdisi olmalıdır.
+
+**⚙ Bağlantı ayarları → Ağ testini çalıştır** sinyal sunucusu, STUN/UDP ve TURN erişimini cihazda ölçer ve hangi yolun engellendiğini gösterir.
+
 PeerJS sinyal sunucusu dosya içeriğini taşımaz. TURN yalnızca doğrudan bağlantı başarısız olduğunda şifreli WebRTC paketlerini röle eder. Kurumsal güvenlik duvarında TURN UDP, TURN TCP ve en kısıtlı ağlar için TURN/TLS 443 erişimi planlanmalıdır.
 
 ## Güvenlik modeli ve sınırlar

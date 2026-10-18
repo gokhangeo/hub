@@ -68,14 +68,16 @@ function setMode(mode) {
 }
 
 function updateWakeLock() {
-  const active = Boolean(sendSession) || Array.from(outboundTransfers.values()).some((t) => ['waiting', 'sending', 'verifying'].includes(t.state)) || Array.from(inboundTransfers.values()).some((t) => t.state === 'receiving');
+  // An idle open connection does not hold the screen awake; waiting for the receiver and active transfers do.
+  const active = (Boolean(sendSession) && !currentConnection?.open) || Array.from(outboundTransfers.values()).some((t) => ['waiting', 'sending', 'verifying'].includes(t.state)) || Array.from(inboundTransfers.values()).some((t) => t.state === 'receiving');
   wakeLock.setActive(active);
 }
 
 function armSessionTimeout() {
   clearTimeout(sessionTimer);
   sessionTimer = setTimeout(() => {
-    if (currentConnection?.open && (queuedSendCount || inboundTransfers.size)) { armSessionTimeout(); return; }
+    // A paired connection stays usable until either side presses Bitir; only unclaimed invitations expire.
+    if (currentConnection?.open) { armSessionTimeout(); return; }
     cancelSendSession('Oturumun süresi doldu. Dosyayı yeniden seçin.');
   }, CONFIG.sessionTimeoutMs);
 }
@@ -119,10 +121,8 @@ function scheduleFile(file, existingId) {
     return sendFile(file, existingId);
   }).catch((error) => { console.error(error); showToast('Aktarım başlatılamadı. Yeniden bağlanıp deneyin.', 'error'); }).finally(() => {
     queuedSendCount -= 1;
-    if (sendSession && !queuedSendCount && sendSession.completed === sendSession.total) {
-      sendSession = null;
-      endIdentity();
-      setStatus('✓ Dosya gönderildi ve doğrulandı', 'ready');
+    if (!queuedSendCount && currentConnection?.open && Array.from(outboundTransfers.values()).every((t) => t.state === 'complete' || t.state === 'failed')) {
+      setStatus('✓ Gönderildi ve doğrulandı. Bağlantı açık; yeni dosya veya metin gönderebilirsiniz.', 'ready');
     }
     updateWakeLock();
   });
@@ -149,6 +149,14 @@ function setConnectedUi(connected) {
   $('connect-button').classList.toggle('button--danger', connected);
   $('connect-button').classList.toggle('button--primary', !connected);
   $('peer-fingerprint').hidden = !connected;
+  $('live-panel').hidden = !connected;
+  document.body.toggleAttribute('data-connected', connected);
+}
+
+// Bitir: the QR owner ends the whole session; a joiner just closes its side.
+async function endLiveSession() {
+  if (sendSession) await cancelSendSession('Bağlantı sonlandırıldı.');
+  else disconnectCurrent('Bağlantı sonlandırıldı.');
 }
 
 function buildShareUrl(id = myId) {
@@ -158,15 +166,57 @@ function buildShareUrl(id = myId) {
 async function resolveIceServers() {
   if (!CONFIG.iceServersUrl) return CONFIG.iceServers;
   try {
-    const response = await fetch(CONFIG.iceServersUrl, { credentials: 'include', headers: { Accept: 'application/json' } });
+    const response = await fetch(CONFIG.iceServersUrl, { credentials: CONFIG.iceServersCredentials || 'include', headers: { Accept: 'application/json' } });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const body = await response.json();
-    if (!Array.isArray(body.iceServers) || body.iceServers.length === 0) throw new Error('ICE listesi boş');
-    return body.iceServers;
+    // Enterprise endpoints return { iceServers }; hosted TURN APIs (e.g. Metered) return the array itself.
+    const list = Array.isArray(body) ? body : body.iceServers;
+    if (!Array.isArray(list) || list.length === 0) throw new Error('ICE listesi boş');
+    return list;
   } catch (error) {
     console.warn('Kurumsal ICE kimlik bilgileri alınamadı:', error);
     showToast('Kurumsal TURN bilgisi alınamadı; doğrudan bağlantı denenecek.', 'error');
     return CONFIG.iceServers;
+  }
+}
+
+// Gathers ICE candidates once to show which route the network allows: host (same LAN),
+// srflx (STUN/UDP out) or relay (TURN). Corporate networks usually only pass TURN over TCP/TLS 443.
+async function runNetworkTest() {
+  const list = $('network-test-results');
+  const button = $('network-test');
+  const add = (result, text) => { const item = document.createElement('li'); item.dataset.result = result; item.textContent = text; list.append(item); };
+  list.replaceChildren();
+  button.disabled = true;
+  try {
+    add(peer?.open ? 'ok' : 'fail', peer?.open ? 'Sinyal sunucusu: erişilebiliyor.' : 'Sinyal sunucusu: erişilemiyor. Ağ, PeerJS WebSocket (wss) bağlantısını engelliyor olabilir.');
+    const servers = await resolveIceServers();
+    const hasTurn = servers.some((server) => [].concat(server.urls).some((url) => /^turns?:/.test(url)));
+    if (!hasTurn) add('info', 'TURN sunucusu tanımlı değil. Kısıtlı ağlarda yalnız doğrudan bağlantı denenebilir.');
+    const types = new Set();
+    const relayProtocols = new Set();
+    const connection = new RTCPeerConnection({ iceServers: servers });
+    connection.createDataChannel('test');
+    connection.addEventListener('icecandidate', ({ candidate }) => {
+      if (!candidate?.candidate) return;
+      const type = candidate.type || / typ (\w+)/.exec(candidate.candidate)?.[1];
+      if (type) types.add(type);
+      if (type === 'relay') relayProtocols.add((candidate.relayProtocol || candidate.protocol || '').toUpperCase());
+    });
+    await connection.setLocalDescription(await connection.createOffer());
+    await new Promise((resolve) => {
+      const timer = setTimeout(resolve, 8000);
+      connection.addEventListener('icegatheringstatechange', () => { if (connection.iceGatheringState === 'complete') { clearTimeout(timer); resolve(); } });
+    });
+    connection.close();
+    add(types.has('srflx') ? 'ok' : 'fail', types.has('srflx') ? 'STUN (UDP): açık. Farklı ağlar çoğunlukla doğrudan bağlanabilir.' : 'STUN (UDP): kapalı. Ağ dışarıya UDP’yi engelliyor; doğrudan bağlantı yalnız aynı ağda çalışır.');
+    if (hasTurn) add(types.has('relay') ? 'ok' : 'fail', types.has('relay') ? `TURN rölesi: çalışıyor (${Array.from(relayProtocols).filter(Boolean).join(', ') || 'bağlı'}).` : 'TURN rölesi: erişilemiyor. turns:…:443?transport=tcp adresinin ağda açık olduğunu kontrol edin.');
+    const verdict = types.has('relay') ? 'Sonuç: Bu ağda aktarım TURN üzerinden çalışmalı.' : types.has('srflx') ? 'Sonuç: Bu ağ doğrudan bağlantıya izin veriyor.' : 'Sonuç: Bu ağda farklı ağdaki cihaza bağlanmak için 443 portunda TURN rölesi gerekir.';
+    add(types.has('relay') || types.has('srflx') ? 'ok' : 'fail', verdict);
+  } catch (error) {
+    add('fail', `Test çalıştırılamadı: ${error.message}`);
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -180,7 +230,7 @@ async function initPeer() {
   const peerOptions = {
     ...CONFIG.peerOptions,
     debug: CONFIG.peerOptions.debug ?? 1,
-    config: { ...(CONFIG.peerOptions.config || {}), iceServers }
+    config: { ...(CONFIG.peerOptions.config || {}), iceServers, ...(CONFIG.iceTransportPolicy ? { iceTransportPolicy: CONFIG.iceTransportPolicy } : {}) }
   };
   const instance = new Peer(myId, peerOptions);
   peer = instance;
@@ -249,7 +299,7 @@ function connectToPeer(value) {
 
 function wireConnection(connection, incoming) {
   const state = { incoming, approved: false, active: false, opened: false, timeout: null };
-  state.timeout = setTimeout(() => rejectCandidate(connection, 'Cihazlar bağlanamadı. Aynı Wi-Fi ağında deneyin veya TURN yapılandırmasını kontrol edin.'), 30000);
+  state.timeout = setTimeout(() => rejectCandidate(connection, 'Cihazlar bağlanamadı. Kurum ağındaysanız ⚙ Bağlantı ayarları → Ağ testi ile engeli görün; TURN rölesi gerekebilir.'), 30000);
   connectionStates.set(connection, state);
   connection.on('open', () => {
     clearTimeout(state.timeout);
@@ -333,7 +383,7 @@ async function activateConnection(connection) {
   state.active = true;
   currentConnection = connection;
   setConnectedUi(true);
-  setStatus(sendSession ? '✓ Alıcı bağlandı' : '✓ Cihazlar eşleşti. Dosya bekleniyor…', 'ready');
+  setStatus(sendSession ? '✓ Alıcı bağlandı' : '✓ Cihazlar eşleşti. İki taraf da dosya veya metin gönderebilir.', 'ready');
   $('fingerprint-value').textContent = await connectionFingerprint(myId, connection.peer);
   showToast('Güvenli WebRTC veri kanalı kuruldu.', 'success');
   inspectConnectionRoute(connection);
@@ -417,23 +467,24 @@ async function processFiles(files) {
     return false;
   });
   if (!list.length) return;
+  if (currentConnection?.open) {
+    // Either side of an open connection can send more without a new QR.
+    if (sendSession) sendSession.total += list.length;
+    for (const file of list) scheduleFile(file);
+    return;
+  }
   setMode('send');
   const summary = list.map((f) => textFiles.has(f) ? `Kopyalanan metin · ${formatBytes(f.size)}` : `${sanitizeFilename(f.name)} · ${formatBytes(f.size)}`).join('\n');
   $('session-files').textContent = summary;
   if (matchMedia('(max-width: 560px)').matches) requestAnimationFrame(() => document.querySelector('.identity-panel').scrollIntoView({ block: 'start' }));
-  if (!currentConnection?.open) {
-    if (!sendSession) sendSession = { total: 0, completed: 0, receiver: null };
-    sendSession.total += list.length;
-    sharedFilesQueue.push(...list);
-    updateSharedFilesBanner();
-    armSessionTimeout();
-    updateWakeLock();
-    if (!peer || peer.destroyed) await initPeer();
-    setStatus(!navigator.onLine ? 'İnternet yok. Bağlantı geldiğinde QR hazır olacak.' : peer?.open ? 'QR kodu alıcıya okutun. Alıcı bekleniyor…' : 'Gönderim oturumu hazırlanıyor…', !navigator.onLine ? 'error' : peer?.open ? 'ready' : 'busy');
-    return;
-  }
-  if (sendSession) sendSession.total += list.length;
-  for (const file of list) scheduleFile(file);
+  if (!sendSession) sendSession = { total: 0, completed: 0, receiver: null };
+  sendSession.total += list.length;
+  sharedFilesQueue.push(...list);
+  updateSharedFilesBanner();
+  armSessionTimeout();
+  updateWakeLock();
+  if (!peer || peer.destroyed) await initPeer();
+  setStatus(!navigator.onLine ? 'İnternet yok. Bağlantı geldiğinde QR hazır olacak.' : peer?.open ? 'QR kodu alıcıya okutun. Alıcı bekleniyor…' : 'Gönderim oturumu hazırlanıyor…', !navigator.onLine ? 'error' : peer?.open ? 'ready' : 'busy');
 }
 
 async function sendFile(file, existingId) {
@@ -555,7 +606,8 @@ function showNextReceiveRequest() {
   $('receive-file-name').textContent = isText ? 'Kopyalanan metin' : currentReceiveRequest.safeName;
   $('receive-file-size').textContent = isText ? formatBytes(currentReceiveRequest.size) : `${formatBytes(currentReceiveRequest.size)} · ${currentReceiveRequest.mime || 'Bilinmeyen tür'}`;
   const needsDisk = currentReceiveRequest.size > CONFIG.maxMemoryFileBytes;
-  if (joiningFromLink && !needsDisk) { acceptReceiveRequest(); return; }
+  // Text from an already paired device is shown in place; files sent back to the QR owner still ask first.
+  if ((joiningFromLink || isText) && !needsDisk) { acceptReceiveRequest(); return; }
   $('receive-storage-note').textContent = needsDisk
     ? ('showSaveFilePicker' in window ? 'Büyük dosya doğrudan seçtiğiniz konuma yazılacak.' : `Bu tarayıcı doğrudan disk yazmayı desteklemiyor; ${formatBytes(CONFIG.maxMemoryFileBytes)} sınırı uygulanır.`)
     : isText ? 'Metin SHA-256 ile doğrulandıktan sonra burada gösterilecek.' : 'Dosya SHA-256 ile doğrulandıktan sonra indirilecek.';
@@ -689,6 +741,16 @@ async function copyText(text, fallbackElement) {
   try { return document.execCommand('copy'); } catch { return false; }
 }
 
+// Only a single http(s) URL gets an open button; javascript:, data: and the like never become links.
+function webLink(text) {
+  const value = text.trim();
+  if (!value || /\s/.test(value)) return '';
+  try {
+    const url = new URL(/^www\./i.test(value) ? `https://${value}` : value);
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+  } catch { return ''; }
+}
+
 function showReceivedText(text, id) {
   const card = transferCards.get(id)?.card;
   if (!card) return;
@@ -707,6 +769,17 @@ function showReceivedText(text, id) {
     showToast(copied ? 'Metin panoya kopyalandı.' : 'Metni seçip elle kopyalayın.', copied ? 'success' : 'info');
   });
   card.append(preview, copy);
+  const link = webLink(text);
+  if (link) {
+    const open = document.createElement('a');
+    open.className = 'button button--quiet download-action open-link-action';
+    open.href = link;
+    open.target = '_blank';
+    open.rel = 'noopener noreferrer';
+    open.textContent = 'Bağlantıyı aç';
+    open.title = link;
+    card.append(open);
+  }
   if (navigator.share) {
     const share = document.createElement('button');
     share.type = 'button';
@@ -1013,6 +1086,10 @@ function bindEvents() {
   $('send-button').addEventListener('click', () => $('file-input').click());
   $('receive-button').addEventListener('click', () => { setMode('receive'); if (!peer || peer.destroyed) initPeer(); $('peer-code').focus(); });
   $('text-button').addEventListener('click', () => openTextDialog());
+  $('live-file').addEventListener('click', () => $('file-input').click());
+  $('live-text').addEventListener('click', () => openTextDialog());
+  $('live-end').addEventListener('click', endLiveSession);
+  $('network-test').addEventListener('click', runNetworkTest);
   $('send-text-button').addEventListener('click', () => openTextDialog());
   $('text-input').addEventListener('input', updateTextCount);
   $('text-paste').addEventListener('click', pasteFromClipboard);
@@ -1026,7 +1103,7 @@ function bindEvents() {
   });
   // Ctrl/Cmd+V outside a field: pasted files go to the file flow, plain text opens the text dialog.
   document.addEventListener('paste', (event) => {
-    if (document.body.dataset.mode === 'receive' || event.target.closest?.('input, textarea, [contenteditable]') || document.querySelector('dialog[open]')) return;
+    if ((document.body.dataset.mode === 'receive' && !currentConnection?.open) || event.target.closest?.('input, textarea, [contenteditable]') || document.querySelector('dialog[open]')) return;
     const files = Array.from(event.clipboardData?.files || []);
     const text = event.clipboardData?.getData('text/plain') || '';
     if (!files.length && !text) return;

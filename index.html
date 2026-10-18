@@ -61,6 +61,15 @@
         <button id="shared-files-dismiss" class="button button--quiet" type="button">İptal</button>
       </div>
 
+      <section id="live-panel" class="panel live-panel" aria-labelledby="live-title" hidden>
+        <div class="section-heading"><span class="step" aria-hidden="true">⇄</span><div><h2 id="live-title">Bağlantı açık</h2><p>İki cihaz da birbirine dosya veya metin gönderebilir. İşiniz bitince Bitir’e dokunun.</p></div></div>
+        <div class="button-row live-actions">
+          <button id="live-file" class="button button--primary" type="button"><span aria-hidden="true">↑</span> Dosya gönder</button>
+          <button id="live-text" class="button button--quiet" type="button"><span aria-hidden="true">¶</span> Metin gönder</button>
+          <button id="live-end" class="button button--danger" type="button">Bitir</button>
+        </div>
+      </section>
+
       <div class="layout">
         <section class="panel identity-panel" aria-labelledby="identity-title">
           <div class="section-heading"><span class="step" aria-hidden="true">↑</span><div><h2 id="identity-title">QR ile Gönder</h2><p id="sender-instruction">Diğer cihazın kamerasıyla QR kodu okutun.</p></div></div>
@@ -180,7 +189,10 @@
         <h2>Bağlantı ayarları</h2>
         <p class="help">Kurumsal ayarlar dağıtım sırasında <code>runtime-config.js</code> ile yönetilir. Buradaki bilgiler gizli anahtar içermez.</p>
         <dl class="settings-list"><div><dt>Sinyal sunucusu</dt><dd id="setting-signal"></dd></div><div><dt>ICE sunucuları</dt><dd id="setting-ice"></dd></div><div><dt>Bellek sınırı</dt><dd id="setting-limit"></dd></div></dl>
-        <div class="button-row"><button class="button button--primary" value="close">Kapat</button></div>
+        <h3 class="network-test__title">Ağ testi</h3>
+        <p class="help">Kurum veya otel ağında bağlantı kurulmuyorsa hangi yolun engellendiğini gösterir.</p>
+        <ul id="network-test-results" class="network-test" aria-live="polite"></ul>
+        <div class="button-row"><button id="network-test" class="button button--quiet" type="button">Ağ testini çalıştır</button><button class="button button--primary" value="close">Kapat</button></div>
       </form>
     </dialog>
 

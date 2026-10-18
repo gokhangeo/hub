@@ -38,15 +38,47 @@ for (const size of [1,10,50,110]) {
     const bytes=await readFile(await download.path());
     expect(bytes.length).toBe(file.buffer.length);
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(createHash('sha256').update(file.buffer).digest('hex'));
-    await expect(page.locator('#device-code')).toHaveValue('');
+    await expect(page.locator('#live-panel')).toBeVisible();
+    await expect(receiver.locator('#live-panel')).toBeVisible();
     await expect(receiver.locator('#connection-dialog')).not.toBeVisible();
     await expect(receiver.locator('#receive-dialog')).not.toBeVisible();
   });
 }
-test('multiple files use one QR and finish the one-time session',async ({page,context}) => {
+test('multiple files use one QR, connection stays open, Bitir ends the session',async ({page,context}) => {
   const receiver=await pair(page,context,[await filePayload(1),{name:'not.txt',mimeType:'text/plain',buffer:Buffer.from('Merhaba Müdürüm')}]);
   await expect(receiver.locator('.transfer-card[data-state="complete"]')).toHaveCount(2);
+  await expect(page.locator('#status-text')).toContainText('Bağlantı açık');
+  await page.locator('#file-input').setInputFiles({name:'ikinci.txt',mimeType:'text/plain',buffer:Buffer.from('aynı oturumda ikinci gönderim')});
+  await expect(receiver.locator('.transfer-card[data-state="complete"]')).toHaveCount(3);
+  await page.locator('#live-end').click();
   await expect(page.locator('#device-code')).toHaveValue('');
+  await expect(receiver.locator('#live-panel')).toBeHidden();
+});
+test('receiver can send text back over the open connection',async ({page,context}) => {
+  const receiver=await pair(page,context,[{name:'not.txt',mimeType:'text/plain',buffer:Buffer.from('ilk')}]);
+  await expect(receiver.locator('#live-panel')).toBeVisible();
+  await receiver.locator('#live-text').click();
+  await receiver.locator('#text-input').fill('Alıcıdan cevap');
+  await receiver.locator('#text-send').click();
+  await expect(page.locator('.text-preview')).toHaveValue('Alıcıdan cevap');
+  await expect(page.locator('#receive-dialog')).not.toBeVisible();
+});
+test('a received link gets a safe open button',async ({page,context}) => {
+  await ready(page);
+  await page.locator('#text-button').click();
+  await page.locator('#text-input').fill('  https://example.com/rapor?id=7  ');
+  await page.locator('#text-send').click();
+  const receiver=await context.newPage();
+  await receiver.goto(`/?receive=${await page.locator('#device-code').inputValue()}`);
+  await expect(receiver.locator('.open-link-action')).toHaveAttribute('href','https://example.com/rapor?id=7');
+  await expect(receiver.locator('.open-link-action')).toHaveAttribute('rel','noopener noreferrer');
+});
+test('network test reports signaling and ICE reachability',async ({page}) => {
+  await ready(page);
+  await page.locator('#settings-button').click();
+  await page.locator('#network-test').click();
+  await expect(page.locator('#network-test-results li').first()).toContainText('Sinyal sunucusu: erişilebiliyor');
+  await expect(page.locator('#network-test-results')).toContainText('Sonuç:',{timeout:15000});
 });
 test('copied text is sent through the QR flow and shown for copying',async ({page,context}) => {
   const text='Toplantı notu: Çarşamba 14:00\nİkinci satır — ğüşıöç 🚀';

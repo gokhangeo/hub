@@ -1,7 +1,7 @@
 // Test-only PeerJS signaling. It relays SDP/ICE JSON, never file bytes.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { resolve, extname } from 'node:path';
+import { resolve, extname, sep } from 'node:path';
 import { WebSocketServer } from 'ws';
 const clients = new Map();
 const types = { '.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.png':'image/png', '.svg':'image/svg+xml', '.webmanifest':'application/manifest+json' };
@@ -13,7 +13,7 @@ const server = createServer(async (req,res) => {
   }
   try {
     const filename = resolve('dist', '.' + (path === '/' ? '/index.html' : path));
-    if (!filename.startsWith(resolve('dist') + '/')) throw new Error('invalid path');
+    if (!filename.startsWith(resolve('dist') + sep)) throw new Error('invalid path');
     res.setHeader('Content-Type', types[extname(filename)] || 'application/octet-stream');
     res.end(await readFile(filename));
   } catch { res.writeHead(404);res.end('not found'); }

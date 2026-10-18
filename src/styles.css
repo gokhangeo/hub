@@ -223,3 +223,15 @@ body[data-mode="send"] #renew-code { display: none; }
 .text-input:focus, .text-preview:focus { border-color: var(--primary); box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 16%, transparent); }
 .text-preview { min-height: 90px; margin-top: 12px; }
 @media (max-width: 560px) { .home-secondary { flex-direction: column; } .home-secondary .button { width: 100%; } }
+
+/* Open connection: both sides can keep sending */
+.live-panel { max-width: 640px; margin: 0 auto 22px; }
+.live-panel .section-heading { margin-bottom: 4px; }
+body[data-connected] .identity-panel { display: none; }
+@media (max-width: 560px) { .live-actions .button { flex: 1 1 100%; } }
+.network-test__title { margin: 20px 0 0; font-size: 15px; }
+.network-test { display: grid; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 13px; }
+.network-test li { padding: 8px 10px; border-radius: 10px; background: var(--surface-2); overflow-wrap: anywhere; }
+.network-test li[data-result="ok"] { border-left: 4px solid var(--success); }
+.network-test li[data-result="fail"] { border-left: 4px solid var(--danger); }
+.network-test li[data-result="info"] { border-left: 4px solid var(--primary); }

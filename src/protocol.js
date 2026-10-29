@@ -3,7 +3,10 @@ export const CHUNK_SIZE = 64 * 1024;
 export const MAX_BUFFERED_AMOUNT = 1024 * 1024;
 // Copied text is sent as a small UTF-8 file and shown in place instead of downloaded.
 export const TEXT_MAX_BYTES = 1024 * 1024;
-export const CODE_PATTERN = /^BT-(?:[A-HJ-NP-Z2-9]{4}-){3}[A-HJ-NP-Z2-9]{4}$/;
+// Short 6-digit code people can read aloud and type; the QR also carries a secret key
+// that lets the scanner in without a tap, while a typed code needs the sender's approval.
+export const CODE_PATTERN = /^BT-\d{6}$/;
+export const KEY_PATTERN = /^[A-HJ-NP-Z2-9]{16}$/;
 
 const SAFE_NAME_MAX = 180;
 const VALID_TYPES = new Set([
@@ -14,22 +17,34 @@ const VALID_TYPES = new Set([
 
 export function generateSecureCode(random = globalThis.crypto) {
   if (!random?.getRandomValues) throw new Error('Güvenli rastgele sayı üreticisi bulunamadı.');
+  const buffer = new Uint32Array(1);
+  let value;
+  // Rejection sampling keeps every 6-digit code equally likely.
+  do { value = random.getRandomValues(buffer)[0]; } while (value >= 4294000000);
+  return `BT-${String(value % 1000000).padStart(6, '0')}`;
+}
+
+export function generateSessionKey(random = globalThis.crypto) {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const bytes = random.getRandomValues(new Uint8Array(16));
-  const body = Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('');
-  return `BT-${body.match(/.{1,4}/g).join('-')}`;
+  return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join('');
 }
 
 export function normalizeCode(value = '') {
-  const raw = String(value).trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const withoutPrefix = raw.startsWith('BT') ? raw.slice(2) : raw;
-  const body = withoutPrefix.slice(0, 16);
-  return body ? `BT-${body.match(/.{1,4}/g).join('-')}` : '';
+  const digits = String(value).replace(/\D/g, '').slice(0, 6);
+  return digits ? `BT-${digits}` : '';
 }
 
 export function isValidCode(value) {
-  const raw = String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-  return (raw.startsWith('BT') ? raw.length === 18 : raw.length === 16) && CODE_PATTERN.test(normalizeCode(value));
+  const raw = String(value || '').trim().toUpperCase().replace(/[\s-]/g, '');
+  const body = raw.startsWith('BT') ? raw.slice(2) : raw;
+  return /^\d{6}$/.test(body);
+}
+
+// Shown to people as "482 913".
+export function displayCode(code) {
+  const digits = String(code || '').replace(/\D/g, '');
+  return digits.length === 6 ? `${digits.slice(0, 3)} ${digits.slice(3)}` : '';
 }
 
 // Both the original invitation URLs and sender QR URLs stay compatible.
@@ -41,12 +56,20 @@ export function codeFromLink(value, base = 'https://localhost/') {
   } catch { return isValidCode(value) ? normalizeCode(value) : ''; }
 }
 
-export function receiveLink(base, code) {
+export function keyFromLink(value, base = 'https://localhost/') {
+  try {
+    const key = new URL(value, base).searchParams.get('k') || '';
+    return KEY_PATTERN.test(key) ? key : '';
+  } catch { return ''; }
+}
+
+export function receiveLink(base, code, key = '') {
   if (!isValidCode(code)) throw new Error('Geçersiz cihaz kodu.');
   const url = new URL(base);
   url.search = '';
   url.hash = '';
   url.searchParams.set('receive', normalizeCode(code));
+  if (KEY_PATTERN.test(key)) url.searchParams.set('k', key);
   return url.toString();
 }
 

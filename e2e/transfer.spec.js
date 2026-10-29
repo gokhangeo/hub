@@ -8,16 +8,16 @@ test.beforeEach(async ({context}) => { if (process.env.BULUTSUZ_TEST_TRANSPORT =
 
 async function ready(page) {
   await page.goto('/');
-  await expect(page.locator('#device-code')).toHaveValue(/^BT-/);
+  await expect(page.locator('#device-code')).toHaveValue(/^\d{3} \d{3}$/);
   await expect(page.locator('#qr-loading')).toBeHidden();
 }
 async function pair(page, context, files) {
   await ready(page);
   await page.locator('#file-input').setInputFiles(files.map((file)=>file.path || file));
   await expect(page.locator('body')).toHaveAttribute('data-mode','send');
-  const code=await page.locator('#device-code').inputValue();
+  const link=new URL(await page.locator('#qr-canvas').getAttribute('data-link'));
   const receiver=await context.newPage();
-  await receiver.goto(`/?receive=${code}`);
+  await receiver.goto(link.pathname+link.search);
   return receiver;
 }
 async function filePayload(megabytes) {
@@ -90,9 +90,9 @@ test('copied text is sent through the QR flow and shown for copying',async ({pag
   await page.locator('#text-send').click();
   await expect(page.locator('body')).toHaveAttribute('data-mode','send');
   await expect(page.locator('#session-files')).toContainText('Kopyalanan metin');
-  const code=await page.locator('#device-code').inputValue();
+  const link=new URL(await page.locator('#qr-canvas').getAttribute('data-link'));
   const receiver=await context.newPage();
-  await receiver.goto(`/?receive=${code}`);
+  await receiver.goto(link.pathname+link.search);
   await expect(receiver.locator('.transfer-card[data-state="complete"]')).toHaveCount(1);
   await expect(receiver.locator('.text-preview')).toHaveValue(text);
   await expect(receiver.locator('.copy-text-action')).toBeVisible();

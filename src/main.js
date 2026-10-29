@@ -6,7 +6,8 @@ import {
   CHUNK_SIZE, PROTOCOL_VERSION, TEXT_MAX_BYTES,
   connectionFingerprint, createTransferId, formatBytes, formatDuration,
   generateSecureCode, isValidCode, normalizeCode, sanitizeFilename,
-  validateMessage, validateMetadata, codeFromLink, receiveLink
+  validateMessage, validateMetadata, codeFromLink, keyFromLink, receiveLink,
+  generateSessionKey, displayCode
 } from './protocol.js';
 import { takeSharedFiles } from './shared-files.js';
 import { TransferWakeLock } from './wake-lock.js';
@@ -41,6 +42,7 @@ let sendingQueue = Promise.resolve();
 let sharedFilesQueue = [];
 let iceServers = CONFIG.iceServers;
 const connectionStates = new WeakMap();
+const connectionKeys = new WeakMap();
 const outboundTransfers = new Map();
 const inboundTransfers = new Map();
 const responseWaiters = new Map();
@@ -48,6 +50,8 @@ const receiveQueue = [];
 const transferCards = new Map();
 const downloadedFiles = new Map();
 let joiningFromLink = false;
+let sessionKey = '';
+let pendingJoin = null;
 const MAX_PENDING_WRITES = 8 * 1024 * 1024;
 const wakeLock = new TransferWakeLock();
 let sendSession = null;
@@ -91,6 +95,7 @@ function endIdentity() {
   connection?.close();
   peer?.destroy();
   myId = '';
+  sessionKey = '';
   $('device-code').value = '';
   $('qr-loading').textContent = 'Yeni dosya seçerek QR oluşturabilirsiniz.';
   $('qr-loading').hidden = false;
@@ -160,7 +165,7 @@ async function endLiveSession() {
 }
 
 function buildShareUrl(id = myId) {
-  return receiveLink(new URL(import.meta.env.BASE_URL, window.location.origin).href, id);
+  return receiveLink(new URL(import.meta.env.BASE_URL, window.location.origin).href, id, sessionKey);
 }
 
 async function resolveIceServers() {
@@ -226,7 +231,8 @@ async function initPeer() {
   iceServers = await resolveIceServers();
   if (generation !== peerGeneration) return;
   myId = generateSecureCode();
-  $('device-code').value = myId;
+  sessionKey = generateSessionKey();
+  $('device-code').value = displayCode(myId);
   const peerOptions = {
     ...CONFIG.peerOptions,
     debug: CONFIG.peerOptions.debug ?? 1,
@@ -239,7 +245,7 @@ async function initPeer() {
     if (generation !== peerGeneration) return;
     armSessionTimeout();
     myId = id;
-    $('device-code').value = id;
+    $('device-code').value = displayCode(id);
     setStatus('Hazır. Güvenli bağlantı bekleniyor.', 'ready');
     await renderQr();
     if (sendSession) setStatus('QR kodu alıcıya okutun. Alıcı bekleniyor…', 'ready');
@@ -247,8 +253,12 @@ async function initPeer() {
     joiningFromLink = Boolean(joinCode);
     if (joiningFromLink) { setMode('receive'); $('connect-title').textContent = 'Dosya geliyor'; }
     if (isValidCode(joinCode) && joinCode !== myId) {
-      $('peer-code').value = joinCode;
-      connectToPeer(joinCode);
+      $('peer-code').value = displayCode(joinCode);
+      connectToPeer(joinCode, keyFromLink(location.href));
+    } else if (pendingJoin) {
+      const { code, key } = pendingJoin;
+      pendingJoin = null;
+      connectToPeer(code, key);
     }
   });
 
@@ -278,7 +288,9 @@ function handlePeerError(error) {
 
 async function renderQr() {
   try {
-    await QRCode.toCanvas($('qr-canvas'), buildShareUrl(), { width: 280, margin: 1, errorCorrectionLevel: 'M', color: { dark: '#312e81', light: '#ffffff' } });
+    const link = buildShareUrl();
+    $('qr-canvas').dataset.link = link;
+    await QRCode.toCanvas($('qr-canvas'), link, { width: 280, margin: 1, errorCorrectionLevel: 'M', color: { dark: '#312e81', light: '#ffffff' } });
     $('qr-loading').hidden = true;
   } catch (error) {
     console.error(error);
@@ -286,14 +298,22 @@ async function renderQr() {
   }
 }
 
-function connectToPeer(value) {
+function connectToPeer(value, key = '') {
   const target = normalizeCode(value);
-  if (!isValidCode(value)) return showToast('Geçerli güvenli cihaz kodunu girin.', 'error');
-  if (!peer?.open) return showToast('Cihaz kodunuz henüz hazır değil.', 'error');
+  if (!isValidCode(value)) return showToast('6 haneli kodu girin.', 'error');
+  joiningFromLink = true;
+  if (!peer?.open) {
+    // Typing is usually faster than the signalling server; connect as soon as it is ready.
+    pendingJoin = { code: target, key };
+    setStatus('Bağlanılıyor…', 'busy');
+    if (!peer || peer.destroyed) initPeer();
+    return;
+  }
   if (target === myId) return showToast('Aynı cihaza bağlanamazsınız.', 'error');
   if (currentConnection) disconnectCurrent('Yeni bağlantı başlatıldı.');
-  setStatus(`${target} cihazına bağlanılıyor…`, 'busy');
+  setStatus(`${displayCode(target)} koduna bağlanılıyor…`, 'busy');
   const connection = peer.connect(target, { reliable: true, serialization: 'binary' });
+  connectionKeys.set(connection, key);
   wireConnection(connection, false);
 }
 
@@ -308,8 +328,9 @@ function wireConnection(connection, incoming) {
       if (state.approved) acceptIncomingConnection(connection);
       else state.timeout = setTimeout(() => rejectCandidate(connection, 'Bağlantı isteğinin süresi doldu.'), CONFIG.acceptTimeoutMs);
     } else {
-      connection.send({ type: 'hello', version: PROTOCOL_VERSION });
-      setStatus('Karşı cihazın onayı bekleniyor…', 'busy');
+      const key = connectionKeys.get(connection) || '';
+      connection.send({ type: 'hello', version: PROTOCOL_VERSION, ...(key ? { key } : {}) });
+      setStatus(key ? 'Bağlanılıyor…' : 'Gönderen cihazda “Kabul et”e dokunun.', 'busy');
       state.timeout = window.setTimeout(() => rejectCandidate(connection, 'Bağlantı onayı zaman aşımına uğradı.'), CONFIG.acceptTimeoutMs);
     }
   });
@@ -329,7 +350,7 @@ function wireConnection(connection, incoming) {
     }
     if (pendingConnection) pendingConnection.close();
     pendingConnection = connection;
-    $('connection-peer').textContent = connection.peer;
+    $('connection-peer').textContent = `${displayCode(connection.peer) || 'Bir'} kodlu cihaz`;
     $('connection-dialog').showModal();
     setStatus('Gelen bağlantı onayınızı bekliyor.', 'busy');
   }
@@ -340,7 +361,17 @@ function routeMessage(connection, message) {
   const state = connectionStates.get(connection);
   if (message.type === 'hello' && state?.incoming) {
     if (message.version !== PROTOCOL_VERSION) return rejectCandidate(connection, 'Karşı cihazı güncelleyip yeniden deneyin.');
-    if (sendSession && !currentConnection && (!sendSession.receiver || sendSession.receiver === connection.peer)) { sendSession.receiver = connection.peer; state.approved = true; acceptIncomingConnection(connection); }
+    if (sendSession && !currentConnection && (!sendSession.receiver || sendSession.receiver === connection.peer)) {
+      // The QR's secret key lets the scanner straight in; a typed 6-digit code asks the sender once.
+      if (sessionKey && message.key === sessionKey) { sendSession.receiver = connection.peer; state.approved = true; acceptIncomingConnection(connection); return; }
+      if (pendingConnection && pendingConnection !== connection) rejectCandidate(pendingConnection, 'Başka bir cihaz bağlanmak istedi.');
+      pendingConnection = connection;
+      clearTimeout(state.timeout);
+      state.timeout = setTimeout(() => rejectCandidate(connection, 'Bağlantı isteğinin süresi doldu.'), CONFIG.acceptTimeoutMs);
+      $('connection-peer').textContent = 'Kodunuzu giren bir cihaz';
+      $('connection-dialog').showModal();
+      setStatus('Bir cihaz bağlanmak istiyor. Kabul edin.', 'busy');
+    }
     return;
   }
   if (message.type === 'connection-accepted' && !state?.incoming) {
@@ -366,6 +397,7 @@ function approvePendingConnection() {
   const state = connectionStates.get(connection);
   state.approved = true;
   pendingConnection = null;
+  if (sendSession) sendSession.receiver = connection.peer;
   if (state.opened || connection.open) acceptIncomingConnection(connection);
   else setStatus('Güvenli veri kanalı kuruluyor…', 'busy');
 }
@@ -382,6 +414,7 @@ async function activateConnection(connection) {
   clearTimeout(state.timeout);
   state.active = true;
   currentConnection = connection;
+  stopQrScanner();
   setConnectedUi(true);
   setStatus(sendSession ? '✓ Alıcı bağlandı' : '✓ Cihazlar eşleşti. İki taraf da dosya veya metin gönderebilir.', 'ready');
   $('fingerprint-value').textContent = await connectionFingerprint(myId, connection.peer);
@@ -987,20 +1020,24 @@ function markActiveTransfersFailed(reason) {
 }
 
 async function startQrScanner() {
+  if (qrScanner?.isScanning) return;
   $('scanner-wrap').hidden = false;
+  $('camera-button').hidden = true;
   Html5QrcodeClass = Html5QrcodeClass || (await import('html5-qrcode')).Html5Qrcode;
   qrScanner = qrScanner || new Html5QrcodeClass('qr-reader');
   try {
     await qrScanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 230, height: 230 } }, onQrDecoded, () => {});
   } catch (error) {
     $('scanner-wrap').hidden = true;
-    showToast('Kamera açılamadı. Kamera iznini ve HTTPS bağlantısını kontrol edin.', 'error');
+    $('camera-button').hidden = false;
+    showToast('Kamera açılamadı. 6 haneli kodu yazabilirsiniz.', 'error');
   }
 }
 
 async function stopQrScanner() {
   try { if (qrScanner?.isScanning) await qrScanner.stop(); } catch {}
   $('scanner-wrap').hidden = true;
+  $('camera-button').hidden = false;
 }
 
 function parseQrValue(value) {
@@ -1011,9 +1048,8 @@ async function onQrDecoded(value) {
   await stopQrScanner();
   const code = parseQrValue(value);
   if (!isValidCode(code)) return showToast('QR kod geçerli bir Bulutsuz Transfer bağlantısı değil.', 'error');
-  joiningFromLink = true;
-  $('peer-code').value = code;
-  connectToPeer(code);
+  $('peer-code').value = displayCode(code);
+  connectToPeer(code, keyFromLink(value));
 }
 
 async function scanQrFile(file) {
@@ -1082,9 +1118,17 @@ function initTheme() {
   document.documentElement.classList.toggle('dark', stored ? stored === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches);
 }
 
+function openReceive() {
+  setMode('receive');
+  if (!peer || peer.destroyed) initPeer();
+  // Phones open the camera right away (the tap is the permission gesture); computers type the code.
+  if (matchMedia('(pointer: coarse)').matches && !currentConnection) startQrScanner();
+  else $('peer-code').focus();
+}
+
 function bindEvents() {
   $('send-button').addEventListener('click', () => $('file-input').click());
-  $('receive-button').addEventListener('click', () => { setMode('receive'); if (!peer || peer.destroyed) initPeer(); $('peer-code').focus(); });
+  $('receive-button').addEventListener('click', openReceive);
   $('text-button').addEventListener('click', () => openTextDialog());
   $('live-file').addEventListener('click', () => $('file-input').click());
   $('live-text').addEventListener('click', () => openTextDialog());
@@ -1111,9 +1155,8 @@ function bindEvents() {
     if (files.length) processFiles(files);
     else openTextDialog(text);
   });
-  $('code-button').addEventListener('click', () => { setMode('receive'); if (!peer || peer.destroyed) initPeer(); $('peer-code').focus(); });
   $('session-cancel').addEventListener('click', () => cancelSendSession());
-  $('back-home').addEventListener('click', async () => { await cancelSendSession(); joiningFromLink = false; history.replaceState(null, '', import.meta.env.BASE_URL); setMode('home'); });
+  $('back-home').addEventListener('click', async () => { await stopQrScanner(); pendingJoin = null; await cancelSendSession(); joiningFromLink = false; history.replaceState(null, '', import.meta.env.BASE_URL); setMode('home'); });
   $('ios-install-how').addEventListener('click', () => $('ios-install-dialog').showModal());
   $('ios-install-dismiss').addEventListener('click', () => { writePreference('ios-install-tip', 'dismissed'); $('ios-install-tip').hidden = true; });
   $('theme-button').addEventListener('click', () => {
@@ -1122,7 +1165,7 @@ function bindEvents() {
     writePreference('theme', dark ? 'dark' : 'light');
   });
   $('settings-button').addEventListener('click', () => $('settings-dialog').showModal());
-  $('copy-code').addEventListener('click', async () => { if (!myId || !peer?.open) return showToast('Cihaz kodu henüz hazır değil.'); try { await navigator.clipboard.writeText(myId); showToast('Güvenli cihaz kodu kopyalandı.', 'success'); } catch { showToast('Kodu seçip elle kopyalayabilirsiniz.'); } });
+  $('copy-code').addEventListener('click', async () => { if (!myId || !peer?.open) return showToast('Cihaz kodu henüz hazır değil.'); try { await navigator.clipboard.writeText(displayCode(myId)); showToast('Güvenli cihaz kodu kopyalandı.', 'success'); } catch { showToast('Kodu seçip elle kopyalayabilirsiniz.'); } });
   $('share-link').addEventListener('click', async () => {
     if (!myId || !peer?.open) return showToast('QR bağlantısı henüz hazır değil. Birkaç saniye sonra tekrar deneyin.');
     const url = buildShareUrl();
@@ -1133,7 +1176,12 @@ function bindEvents() {
   });
   $('renew-code').addEventListener('click', renewIdentity);
   $('connect-button').addEventListener('click', () => currentConnection ? disconnectCurrent() : connectToPeer($('peer-code').value));
-  $('peer-code').addEventListener('input', (event) => { const position = event.target.selectionStart; event.target.value = normalizeCode(event.target.value); event.target.setSelectionRange(position, position); });
+  $('peer-code').addEventListener('input', (event) => {
+    const digits = event.target.value.replace(/\D/g, '').slice(0, 6);
+    event.target.value = digits.length > 3 ? `${digits.slice(0, 3)} ${digits.slice(3)}` : digits;
+    // Six digits is the whole code: connect without a button press.
+    if (digits.length === 6 && !currentConnection) { event.target.blur(); connectToPeer(digits); }
+  });
   $('peer-code').addEventListener('keydown', (event) => { if (event.key === 'Enter') connectToPeer(event.currentTarget.value); });
   $('connection-accept').addEventListener('click', approvePendingConnection);
   $('connection-reject').addEventListener('click', (event) => { event.preventDefault(); if (pendingConnection) rejectCandidate(pendingConnection, 'Bağlantı isteği reddedildi.'); $('connection-dialog').close(); });

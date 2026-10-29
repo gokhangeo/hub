@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bulutsuz-transfer-v4';
+const CACHE_NAME = 'bulutsuz-transfer-v5';
 const BASE_PATH = new URL('./', self.location.href).pathname;
 const APP_SHELL = [BASE_PATH, `${BASE_PATH}manifest.webmanifest`, `${BASE_PATH}runtime-config.js`, `${BASE_PATH}icons/app-icon.svg`, `${BASE_PATH}icons/apple-touch-icon.png`, `${BASE_PATH}icons/app-icon-192.png`, `${BASE_PATH}icons/app-icon-512.png`];
 const DB_NAME = 'bulutsuz-transfer-share-target';

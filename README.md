@@ -4,7 +4,8 @@ Bulutsuz Transfer, iki tarayıcı arasında WebRTC veri kanalıyla şifreli dosy
 
 ## Öne çıkanlar
 
-- 80 bitlik, `crypto.getRandomValues()` tabanlı tek kullanımlık cihaz kodu
+- Kolay alma: QR okut (onaysız başlar) ya da 6 haneli kodu yaz (yazınca bağlanır, gönderen bir kez onaylar)
+- QR bağlantısında 80 bitlik gizli oturum anahtarı (`k`), elle girişte gönderici onayı
 - Dosya seç → otomatik QR; güvenli davet ile ilk alıcıya otomatik aktarım
 - Kodla klasik bağlantıda cihaz/dosya onayı
 - Sıralı parça kontrolü, boyut sınırı, zaman aşımı, iptal ve yeniden deneme

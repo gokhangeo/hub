@@ -1,19 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CHUNK_SIZE, TEXT_MAX_BYTES, createTransferId, generateSecureCode, isValidCode,
+  CHUNK_SIZE, TEXT_MAX_BYTES, createTransferId, generateSecureCode, generateSessionKey, displayCode, isValidCode,
   normalizeCode, sanitizeFilename, validateMetadata, validateMessage
 } from '../src/protocol.js';
 
-describe('güvenli eşleştirme kodu', () => {
-  it('16 karakterlik okunabilir kod üretir', () => {
-    const fakeCrypto = { getRandomValues: (bytes) => bytes.fill(7) };
+describe('kısa eşleştirme kodu', () => {
+  it('6 haneli kod üretir', () => {
+    const fakeCrypto = { getRandomValues: (bytes) => bytes.fill(482913) };
     const code = generateSecureCode(fakeCrypto);
-    expect(code).toMatch(/^BT-(?:[A-HJ-NP-Z2-9]{4}-){3}[A-HJ-NP-Z2-9]{4}$/);
+    expect(code).toBe('BT-482913');
     expect(isValidCode(code)).toBe(true);
+    expect(displayCode(code)).toBe('482 913');
   });
 
-  it('boşluk ve tireleri normalize eder', () => {
-    expect(normalizeCode('bt abcd efgh jkmn 2345')).toBe('BT-ABCD-EFGH-JKMN-2345');
+  it('boşluklu yazımı kabul eder', () => {
+    expect(isValidCode('482 913')).toBe(true);
+    expect(normalizeCode('482 913')).toBe('BT-482913');
+    expect(isValidCode('48291')).toBe(false);
+  });
+
+  it('QR anahtarı üretir', () => {
+    const fakeCrypto = { getRandomValues: (bytes) => bytes.fill(7) };
+    expect(generateSessionKey(fakeCrypto)).toMatch(/^[A-HJ-NP-Z2-9]{16}$/);
   });
 
   it('kriptografik aktarım kimliği üretir', () => {
@@ -59,16 +67,17 @@ describe('uzak veri doğrulaması', () => {
   });
 });
 
-describe('QR routing compatibility', () => {
-  it('supports both legacy and new invitation URLs', async () => {
-    const { codeFromLink, receiveLink } = await import('../src/protocol.js');
-    const code='BT-ABCD-EFGH-JKMN-2345';
+describe('QR bağlantısı', () => {
+  it('kod ve anahtarı taşır', async () => {
+    const { codeFromLink, keyFromLink, receiveLink } = await import('../src/protocol.js');
+    const code = 'BT-482913'; const key = 'ABCDEFGHJKLMNPQR';
     expect(codeFromLink(`https://example.com/hub/?join=${code}`)).toBe(code);
-    const url=receiveLink('https://example.com/hub/?old=value',code);
-    expect(url).toBe(`https://example.com/hub/?receive=${code}`);
+    const url = receiveLink('https://example.com/hub/?old=value', code, key);
+    expect(url).toBe(`https://example.com/hub/?receive=${code}&k=${key}`);
     expect(codeFromLink(url)).toBe(code);
+    expect(keyFromLink(url)).toBe(key);
   });
-  it('rejects codes with trailing characters rather than truncating them', () => {
-    expect(isValidCode('BT-ABCD-EFGH-JKMN-2345AAAA')).toBe(false);
+  it('fazla haneli kodu reddeder', () => {
+    expect(isValidCode('BT-4829131')).toBe(false);
   });
 });

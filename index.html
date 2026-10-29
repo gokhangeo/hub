@@ -39,15 +39,14 @@
       </section>
 
       <section id="home-panel" class="home-panel" aria-labelledby="home-title">
-        <h1 id="home-title">Dosyanı seç, QR’ı paylaş.</h1>
-        <p>Dosyalarınız buluta yüklenmez. Cihazlar arasında şifreli aktarılır.</p>
+        <h1 id="home-title">Ne yapmak istiyorsun?</h1>
+        <p>Dosyalar buluta yüklenmez, iki cihaz arasında şifreli gider.</p>
         <div class="home-actions">
           <button id="send-button" class="button button--primary big-action" type="button"><span aria-hidden="true">↑</span> Dosya Gönder</button>
           <button id="receive-button" class="button button--quiet big-action" type="button"><span aria-hidden="true">↓</span> Dosya Al</button>
         </div>
         <div class="home-secondary">
           <button id="text-button" class="button button--quiet code-action" type="button"><span aria-hidden="true">¶</span> Kopyalanan Metni Gönder</button>
-          <button id="code-button" class="button button--quiet code-action" type="button">Kod ile bağlan</button>
         </div>
       </section>
       <div id="ios-install-tip" class="notice notice--info" hidden>
@@ -72,21 +71,18 @@
 
       <div class="layout">
         <section class="panel identity-panel" aria-labelledby="identity-title">
-          <div class="section-heading"><span class="step" aria-hidden="true">↑</span><div><h2 id="identity-title">QR ile Gönder</h2><p id="sender-instruction">Diğer cihazın kamerasıyla QR kodu okutun.</p></div></div>
+          <div class="section-heading"><span class="step" aria-hidden="true">↑</span><div><h2 id="identity-title">Alıcıya göster</h2><p id="sender-instruction">Diğer cihazda <strong>Dosya Al</strong>’a dokunup bu QR’ı okutun ya da kodu yazın.</p></div></div>
           <p id="session-files" class="session-files"></p>
-          <p id="session-privacy" class="help">Bağlantıyı açan ilk cihaz dosyaları alabilir. Yalnızca alıcıyla paylaşın.</p>
           <div class="qr-wrap">
             <canvas id="qr-canvas" width="220" height="220" aria-label="Cihaz bağlantı QR kodu"></canvas>
             <div id="qr-loading" class="qr-loading">QR kod hazırlanıyor…</div>
           </div>
-          <label class="field-label" for="device-code">Güvenli cihaz kodu</label>
-          <div class="copy-field">
-            <input id="device-code" class="code-input" type="text" readonly aria-describedby="code-help" />
-            <button id="copy-code" class="button button--quiet" type="button">Kopyala</button>
-          </div>
-          <p id="code-help" class="help">Kod tek kullanımlık oturum kimliğidir. Yalnızca güvendiğiniz kişiyle paylaşın.</p>
+          <label class="field-label big-code-label" for="device-code">veya bu kodu yazsın</label>
+          <input id="device-code" class="big-code" type="text" readonly aria-describedby="code-help" />
+          <button id="copy-code" class="button button--quiet" type="button" hidden>Kopyala</button>
+          <p id="code-help" class="help big-code-help">Kodu yazan cihaz için burada bir kez “Kabul et”e dokunursunuz.</p>
           <div class="button-row">
-            <button id="share-link" class="button button--primary" type="button">Bağlantıyı paylaş</button>
+            <button id="share-link" class="button button--quiet" type="button">Bağlantıyı mesajla gönder</button>
             <button id="session-cancel" class="button button--danger" type="button">İptal</button>
             <button id="renew-code" class="button button--quiet" type="button">Kodu yenile</button>
           </div>
@@ -94,19 +90,18 @@
 
         <div class="stack">
           <section id="connection-panel" class="panel" aria-labelledby="connect-title">
-            <div class="section-heading"><span class="step">2</span><div><h2 id="connect-title">Dosya Al</h2><p>Kodu girin, bağlantıyı tarayın veya QR görseli yükleyin.</p></div></div>
-            <label class="field-label" for="peer-code">Hedef cihaz kodu</label>
-            <div class="connect-row">
-              <input id="peer-code" class="code-input" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="BT-XXXX-XXXX-XXXX-XXXX" />
-              <button id="connect-button" class="button button--primary" type="button">Bağlan</button>
-            </div>
-            <div class="button-row">
-              <button id="camera-button" class="button button--quiet" type="button">Kamerayla QR oku</button>
-              <label class="button button--quiet file-button">QR görseli seç<input id="qr-file" type="file" accept="image/*" /></label>
-            </div>
+            <div class="section-heading"><span class="step" aria-hidden="true">↓</span><div><h2 id="connect-title">Dosya Al</h2><p>Gönderen ekrandaki QR’ı okut ya da 6 haneli kodu yaz.</p></div></div>
             <div id="scanner-wrap" class="scanner" hidden>
               <div id="qr-reader"></div>
-              <button id="camera-close" class="button button--danger" type="button">Kamerayı kapat</button>
+              <button id="camera-close" class="button button--quiet" type="button">Kamerayı kapat, kodu yazacağım</button>
+            </div>
+            <button id="camera-button" class="button button--primary big-action receive-camera" type="button"><span aria-hidden="true">⌖</span> QR okut</button>
+            <label class="field-label receive-code-label" for="peer-code">veya kodu yaz</label>
+            <input id="peer-code" class="big-code big-code--input" type="text" inputmode="numeric" pattern="[0-9 ]*" autocomplete="one-time-code" maxlength="7" spellcheck="false" placeholder="000 000" aria-describedby="peer-code-help" />
+            <p id="peer-code-help" class="help center">6. rakamı yazınca kendiliğinden bağlanır.</p>
+            <div class="button-row receive-extra">
+              <button id="connect-button" class="button button--quiet" type="button">Bağlan</button>
+              <label class="button button--quiet file-button">QR ekran görüntüsü seç<input id="qr-file" type="file" accept="image/*" /></label>
             </div>
             <div id="peer-fingerprint" class="fingerprint" hidden>
               <small>BAĞLANTI PARMAK İZİ</small><strong id="fingerprint-value"></strong><p>İki cihazda aynı değeri gördüğünüzü sözlü olarak doğrulayın.</p>
@@ -155,8 +150,8 @@
       <form method="dialog" class="dialog__card">
         <span class="dialog__icon" aria-hidden="true">⇄</span>
         <h2>Bağlantı isteği</h2>
-        <p><strong id="connection-peer"></strong> kodlu cihaz bağlanmak istiyor.</p>
-        <p class="help">Yalnızca kodu paylaştığınız cihazı kabul edin.</p>
+        <p><strong id="connection-peer"></strong> bağlanmak istiyor.</p>
+        <p class="help">Kodu az önce birine verdiysen kabul et. Tanımıyorsan reddet.</p>
         <div class="button-row"><button id="connection-reject" class="button button--danger" value="reject">Reddet</button><button id="connection-accept" class="button button--primary" value="accept">Kabul et</button></div>
       </form>
     </dialog>

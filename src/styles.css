@@ -235,3 +235,23 @@ body[data-connected] .identity-panel { display: none; }
 .network-test li[data-result="ok"] { border-left: 4px solid var(--success); }
 .network-test li[data-result="fail"] { border-left: 4px solid var(--danger); }
 .network-test li[data-result="info"] { border-left: 4px solid var(--primary); }
+
+/* Simple receive: big camera button + 6-digit code */
+.big-code { display: block; width: 100%; height: 72px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-2); color: var(--text); text-align: center; font: 800 40px/1 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: 0.12em; outline: none; }
+.big-code:focus { border-color: var(--primary); box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 16%, transparent); }
+.big-code--input::placeholder { color: color-mix(in srgb, var(--muted) 45%, transparent); }
+.big-code-label, .receive-code-label { text-align: center; margin-top: 18px; }
+.big-code-help, .center { text-align: center; }
+.receive-camera { width: 100%; }
+.receive-extra { justify-content: center; }
+.receive-extra .button { font-size: 12px; }
+#connect-button.button--danger { color: var(--danger); }
+.scanner { margin: 0 0 6px; }
+#qr-reader video { border-radius: 12px; }
+body[data-connected] #connection-panel .receive-camera,
+body[data-connected] #connection-panel .receive-code-label,
+body[data-connected] #connection-panel #peer-code,
+body[data-connected] #connection-panel #peer-code-help,
+body[data-connected] #connection-panel .file-button { display: none; }
+#peer-fingerprint { display: none !important; }
+@media (max-width: 560px) { .big-code { font-size: 34px; height: 66px; } }

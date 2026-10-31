@@ -46,6 +46,7 @@
           <button id="receive-button" class="button button--quiet big-action" type="button"><span aria-hidden="true">↓</span> Dosya Al</button>
         </div>
         <div class="home-secondary">
+          <button id="request-button" class="button button--quiet code-action" type="button"><span aria-hidden="true">⇣</span> Dosya İste <small>(uygulaması olmayandan)</small></button>
           <button id="text-button" class="button button--quiet code-action" type="button"><span aria-hidden="true">¶</span> Kopyalanan Metni Gönder</button>
         </div>
       </section>
@@ -67,6 +68,13 @@
           <button id="live-text" class="button button--quiet" type="button"><span aria-hidden="true">¶</span> Metin gönder</button>
           <button id="live-end" class="button button--danger" type="button">Bitir</button>
         </div>
+      </section>
+
+      <section id="give-panel" class="panel give-panel" aria-labelledby="give-title" hidden>
+        <div class="section-heading"><span class="step" aria-hidden="true">↑</span><div><h2 id="give-title">Senden dosya istendi</h2><p>Göndermek istediğin dosyayı seç, doğrudan ona gider. Bir şey kurman gerekmez.</p></div></div>
+        <button id="give-file" class="button button--primary big-action give-action" type="button"><span aria-hidden="true">↑</span> Dosya seç</button>
+        <button id="give-text" class="button button--quiet give-action" type="button"><span aria-hidden="true">¶</span> Metin gönder</button>
+        <p id="give-status" class="help center" aria-live="polite"></p>
       </section>
 
       <div class="layout">
@@ -101,6 +109,7 @@
             <p id="peer-code-help" class="help center">6. rakamı yazınca kendiliğinden bağlanır.</p>
             <div class="button-row receive-extra">
               <button id="connect-button" class="button button--quiet" type="button">Bağlan</button>
+              <button id="request-button-2" class="button button--quiet" type="button">Karşıda uygulama yok mu? Dosya iste</button>
               <label class="button button--quiet file-button">QR ekran görüntüsü seç<input id="qr-file" type="file" accept="image/*" /></label>
             </div>
             <div id="peer-fingerprint" class="fingerprint" hidden>

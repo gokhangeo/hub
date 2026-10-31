@@ -28,3 +28,15 @@ test('QR bağlantısıyla alma onaysız başlar', async ({page,context}) => {
   await expect(receiver.locator('.transfer-card[data-state="complete"]')).toBeVisible({timeout:20000});
   await expect(page.locator('#connection-dialog')).toBeHidden();
 });
+test('Dosya iste: linki açan dosya seçer, isteyene gelir', async ({page,context}) => {
+  await page.goto('/');
+  await page.locator('#request-button').click();
+  await expect(page.locator('#qr-loading')).toBeHidden();
+  const link=new URL(await page.locator('#qr-canvas').getAttribute('data-link'));
+  expect(link.searchParams.get('send')).toMatch(/^BT-\d{6}$/);
+  const giver=await context.newPage();
+  await giver.goto(link.pathname+link.search);
+  await expect(giver.locator('#give-panel')).toBeVisible();
+  await giver.locator('#file-input').setInputFiles(file);
+  await expect(page.locator('.transfer-card[data-state="complete"]')).toBeVisible({timeout:20000});
+});

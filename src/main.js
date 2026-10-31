@@ -6,7 +6,7 @@ import {
   CHUNK_SIZE, PROTOCOL_VERSION, TEXT_MAX_BYTES,
   connectionFingerprint, createTransferId, formatBytes, formatDuration,
   generateSecureCode, isValidCode, normalizeCode, sanitizeFilename,
-  validateMessage, validateMetadata, codeFromLink, keyFromLink, receiveLink,
+  validateMessage, validateMetadata, codeFromLink, keyFromLink, receiveLink, requestLink, requestCodeFromLink,
   generateSessionKey, displayCode
 } from './protocol.js';
 import { takeSharedFiles } from './shared-files.js';
@@ -52,6 +52,7 @@ const downloadedFiles = new Map();
 let joiningFromLink = false;
 let sessionKey = '';
 let pendingJoin = null;
+let requestTarget = null; // set when this page was opened from someone's "Dosya iste" link
 const MAX_PENDING_WRITES = 8 * 1024 * 1024;
 const wakeLock = new TransferWakeLock();
 let sendSession = null;
@@ -68,6 +69,7 @@ function setMode(mode) {
   $('home-panel').hidden = mode !== 'home';
   $('back-home').hidden = mode === 'home';
   $('keep-open-note').hidden = mode === 'home';
+  $('give-panel').hidden = mode !== 'give';
   if (mode !== 'home') $('ios-install-tip').hidden = true;
 }
 
@@ -82,6 +84,8 @@ function armSessionTimeout() {
   sessionTimer = setTimeout(() => {
     // A paired connection stays usable until either side presses Bitir; only unclaimed invitations expire.
     if (currentConnection?.open) { armSessionTimeout(); return; }
+    // A file request waits as long as the page stays open: the other person may answer late.
+    if (sendSession?.request) { armSessionTimeout(); return; }
     cancelSendSession('Oturumun süresi doldu. Dosyayı yeniden seçin.');
   }, CONFIG.sessionTimeoutMs);
 }
@@ -165,6 +169,7 @@ async function endLiveSession() {
 }
 
 function buildShareUrl(id = myId) {
+  if (sendSession?.request) return requestLink(new URL(import.meta.env.BASE_URL, window.location.origin).href, id, sessionKey);
   return receiveLink(new URL(import.meta.env.BASE_URL, window.location.origin).href, id, sessionKey);
 }
 
@@ -255,6 +260,9 @@ async function initPeer() {
     if (isValidCode(joinCode) && joinCode !== myId) {
       $('peer-code').value = displayCode(joinCode);
       connectToPeer(joinCode, keyFromLink(location.href));
+    } else if (requestTarget && !currentConnection) {
+      connectToPeer(requestTarget.code, requestTarget.key);
+      $('give-status').textContent = 'Bağlanılıyor…';
     } else if (pendingJoin) {
       const { code, key } = pendingJoin;
       pendingJoin = null;
@@ -284,6 +292,11 @@ function handlePeerError(error) {
   showToast(messages[error.type] || 'Güvenli bağlantı kurulamadı. İnternetinizi kontrol edip yeniden deneyin.', 'error');
   setStatus(messages[error.type] || 'Bağlantı hatası', 'error');
   if (error.type === 'id-taken') renewIdentity();
+  if (requestTarget && error.type === 'peer-unavailable') {
+    const text = 'Dosyayı isteyen kişinin sayfası kapalı. Ondan Bulutsuz’u açık tutmasını iste, sonra Dosya seç’e yeniden dokun.';
+    $('give-status').textContent = text;
+    setStatus(text, 'error');
+  }
 }
 
 async function renderQr() {
@@ -416,7 +429,7 @@ async function activateConnection(connection) {
   currentConnection = connection;
   stopQrScanner();
   setConnectedUi(true);
-  setStatus(sendSession ? '✓ Alıcı bağlandı' : '✓ Cihazlar eşleşti. İki taraf da dosya veya metin gönderebilir.', 'ready');
+  setStatus(sendSession?.request ? '✓ Karşı taraf bağlandı. Dosyayı seçmesi bekleniyor…' : sendSession ? '✓ Alıcı bağlandı' : '✓ Cihazlar eşleşti. İki taraf da dosya veya metin gönderebilir.', 'ready');
   $('fingerprint-value').textContent = await connectionFingerprint(myId, connection.peer);
   showToast('Güvenli WebRTC veri kanalı kuruldu.', 'success');
   inspectConnectionRoute(connection);
@@ -500,6 +513,15 @@ async function processFiles(files) {
     return false;
   });
   if (!list.length) return;
+  if (requestTarget && !currentConnection?.open) {
+    // Opened from a "Dosya iste" link: files go to the requester as soon as the connection is up.
+    sharedFilesQueue.push(...list);
+    $('give-status').textContent = `${list.length === 1 ? sanitizeFilename(list[0].name) : `${list.length} dosya`} bağlanınca gönderilecek…`;
+    setStatus('Bağlanılıyor…', 'busy');
+    if (peer?.open) connectToPeer(requestTarget.code, requestTarget.key);
+    else if (!peer || peer.destroyed) await initPeer();
+    return;
+  }
   if (currentConnection?.open) {
     // Either side of an open connection can send more without a new QR.
     if (sendSession) sendSession.total += list.length;
@@ -507,6 +529,7 @@ async function processFiles(files) {
     return;
   }
   setMode('send');
+  setIdentityTexts(false);
   const summary = list.map((f) => textFiles.has(f) ? `Kopyalanan metin · ${formatBytes(f.size)}` : `${sanitizeFilename(f.name)} · ${formatBytes(f.size)}`).join('\n');
   $('session-files').textContent = summary;
   if (matchMedia('(max-width: 560px)').matches) requestAnimationFrame(() => document.querySelector('.identity-panel').scrollIntoView({ block: 'start' }));
@@ -680,7 +703,7 @@ function showNextReceiveRequest() {
   $('receive-file-size').textContent = isText ? formatBytes(currentReceiveRequest.size) : `${formatBytes(currentReceiveRequest.size)} · ${currentReceiveRequest.mime || 'Bilinmeyen tür'}`;
   const needsDisk = currentReceiveRequest.size > CONFIG.maxMemoryFileBytes && !(androidBridge() && !isText);
   // Text from an already paired device is shown in place; files sent back to the QR owner still ask first.
-  if ((joiningFromLink || isText) && !needsDisk) { acceptReceiveRequest(); return; }
+  if ((joiningFromLink || isText || sendSession?.request) && !needsDisk) { acceptReceiveRequest(); return; }
   $('receive-storage-note').textContent = needsDisk
     ? ('showSaveFilePicker' in window ? 'Büyük dosya doğrudan seçtiğiniz konuma yazılacak.' : `Bu tarayıcı doğrudan disk yazmayı desteklemiyor; ${formatBytes(CONFIG.maxMemoryFileBytes)} sınırı uygulanır.`)
     : isText ? 'Metin SHA-256 ile doğrulandıktan sonra burada gösterilecek.' : 'Dosya SHA-256 ile doğrulandıktan sonra indirilecek.';
@@ -1178,6 +1201,28 @@ function initTheme() {
   document.documentElement.classList.toggle('dark', stored ? stored === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches);
 }
 
+function setIdentityTexts(request) {
+  $('identity-title').textContent = request ? 'Dosya iste' : 'Alıcıya göster';
+  $('sender-instruction').innerHTML = request
+    ? 'Linki WhatsApp veya mesajla gönder. Karşı taraf açıp dosyayı seçince buraya gelir. <strong>Bu sayfayı açık tut.</strong>'
+    : 'Diğer cihazda <strong>Dosya Al</strong>’a dokunup bu QR’ı okutun ya da kodu yazın.';
+  $('share-link').textContent = request ? 'Linki gönder' : 'Bağlantıyı mesajla gönder';
+}
+
+async function startRequestSession() {
+  if (currentConnection?.open) return showToast('Bağlantı zaten açık; karşı taraf doğrudan gönderebilir.');
+  await stopQrScanner();
+  setMode('request');
+  setIdentityTexts(true);
+  $('session-files').textContent = '';
+  sendSession = { total: 0, completed: 0, receiver: null, request: true };
+  armSessionTimeout();
+  updateWakeLock();
+  if (!peer || peer.destroyed) await initPeer();
+  else if (peer.open) await renderQr();
+  setStatus('Linki gönder. Karşı taraf dosyayı seçince buraya gelecek.', 'ready');
+}
+
 function openReceive() {
   setMode('receive');
   if (!peer || peer.destroyed) initPeer();
@@ -1190,6 +1235,10 @@ function bindEvents() {
   $('send-button').addEventListener('click', () => $('file-input').click());
   $('receive-button').addEventListener('click', openReceive);
   $('text-button').addEventListener('click', () => openTextDialog());
+  $('request-button').addEventListener('click', startRequestSession);
+  $('request-button-2').addEventListener('click', startRequestSession);
+  $('give-file').addEventListener('click', () => $('file-input').click());
+  $('give-text').addEventListener('click', () => openTextDialog());
   $('live-file').addEventListener('click', () => $('file-input').click());
   $('live-text').addEventListener('click', () => openTextDialog());
   $('live-end').addEventListener('click', endLiveSession);
@@ -1216,7 +1265,7 @@ function bindEvents() {
     else openTextDialog(text);
   });
   $('session-cancel').addEventListener('click', () => cancelSendSession());
-  $('back-home').addEventListener('click', async () => { await stopQrScanner(); pendingJoin = null; await cancelSendSession(); joiningFromLink = false; history.replaceState(null, '', import.meta.env.BASE_URL); setMode('home'); });
+  $('back-home').addEventListener('click', async () => { await stopQrScanner(); pendingJoin = null; requestTarget = null; await cancelSendSession(); joiningFromLink = false; history.replaceState(null, '', import.meta.env.BASE_URL); setMode('home'); });
   $('ios-install-how').addEventListener('click', () => $('ios-install-dialog').showModal());
   $('ios-install-dismiss').addEventListener('click', () => { writePreference('ios-install-tip', 'dismissed'); $('ios-install-tip').hidden = true; });
   $('theme-button').addEventListener('click', () => {
@@ -1230,7 +1279,8 @@ function bindEvents() {
     if (!myId || !peer?.open) return showToast('QR bağlantısı henüz hazır değil. Birkaç saniye sonra tekrar deneyin.');
     const url = buildShareUrl();
     if (navigator.share) {
-      try { await navigator.share({ title: 'Bulutsuz Transfer bağlantısı', text: 'Bu dosyayı Bulutsuz Transfer ile almak için bağlantıyı aç.', url }); return; } catch (error) { if (error.name === 'AbortError') return; }
+      const text = sendSession?.request ? 'Bana dosya göndermek için bu bağlantıyı aç ve dosyayı seç:' : 'Bu dosyayı Bulutsuz Transfer ile almak için bağlantıyı aç.';
+      try { await navigator.share({ title: 'Bulutsuz Transfer', text, url }); return; } catch (error) { if (error.name === 'AbortError') return; }
     }
     try { await navigator.clipboard.writeText(url); showToast('Bağlantı panoya kopyalandı.', 'success'); } catch { showToast('Bağlantı paylaşılamadı. QR veya cihaz kodunu kullanın.', 'error'); }
   });
@@ -1281,6 +1331,8 @@ async function bootstrap() {
   bindEvents();
   showIOSInstallTip();
   if (codeFromLink(location.href)) setMode('receive');
+  const requestCode = requestCodeFromLink(location.href);
+  if (requestCode) { requestTarget = { code: requestCode, key: keyFromLink(location.href) }; setMode('give'); }
   $('transfer-limit').textContent = `Tek dosya üst sınırı ${formatBytes(CONFIG.maxFileBytes)}. ${formatBytes(CONFIG.maxMemoryFileBytes)} üzerindeki alımlar desteklenen tarayıcılarda doğrudan diske yazılır.`;
   $('setting-signal').textContent = CONFIG.peerOptions.host || 'PeerJS genel sinyal hizmeti';
   $('setting-ice').textContent = CONFIG.iceServersUrl || iceServers.flatMap((server) => Array.isArray(server.urls) ? server.urls : [server.urls]).filter(Boolean).join(', ');

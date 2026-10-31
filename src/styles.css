@@ -255,3 +255,14 @@ body[data-connected] #connection-panel #peer-code-help,
 body[data-connected] #connection-panel .file-button { display: none; }
 #peer-fingerprint { display: none !important; }
 @media (max-width: 560px) { .big-code { font-size: 34px; height: 66px; } }
+
+/* Dosya iste */
+#request-button small { font-weight: 500; opacity: .7; }
+body[data-mode="request"] .layout, body[data-mode="give"] .layout { grid-template-columns: 1fr; max-width: 640px; margin-inline: auto; }
+body[data-mode="request"] .stack { display: none; }
+body[data-mode="request"] .big-code-label, body[data-mode="request"] #device-code, body[data-mode="request"] #code-help, body[data-mode="request"] #renew-code { display: none; }
+body[data-mode="request"] #share-link { background: var(--primary); color: #fff; border-color: transparent; min-height: 56px; font-size: 17px; }
+body[data-mode="give"] .layout { display: none; }
+.give-panel { max-width: 640px; margin: 0 auto 16px; }
+.give-action { width: 100%; margin-top: 12px; }
+body[data-connected] #give-panel { display: none; }

@@ -81,3 +81,14 @@ describe('QR bağlantısı', () => {
     expect(isValidCode('BT-4829131')).toBe(false);
   });
 });
+
+describe('Dosya iste bağlantısı', () => {
+  it('send parametresiyle kod ve anahtar taşır', async () => {
+    const { requestLink, requestCodeFromLink, keyFromLink, codeFromLink } = await import('../src/protocol.js');
+    const url = requestLink('https://example.com/hub/', 'BT-123456', 'ABCDEFGHJKLMNPQR');
+    expect(url).toBe('https://example.com/hub/?send=BT-123456&k=ABCDEFGHJKLMNPQR');
+    expect(requestCodeFromLink(url)).toBe('BT-123456');
+    expect(keyFromLink(url)).toBe('ABCDEFGHJKLMNPQR');
+    expect(codeFromLink(url)).toBe('');
+  });
+});

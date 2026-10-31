@@ -73,6 +73,22 @@ export function receiveLink(base, code, key = '') {
   return url.toString();
 }
 
+// "Dosya iste": whoever opens this link picks a file and it goes to the link's owner.
+export function requestLink(base, code, key = '') {
+  const url = new URL(receiveLink(base, code, key));
+  url.searchParams.delete('receive');
+  url.searchParams.set('send', normalizeCode(code));
+  if (KEY_PATTERN.test(key)) { url.searchParams.delete('k'); url.searchParams.set('k', key); }
+  return url.toString();
+}
+
+export function requestCodeFromLink(value, base = 'https://localhost/') {
+  try {
+    const code = new URL(value, base).searchParams.get('send') || '';
+    return isValidCode(code) ? normalizeCode(code) : '';
+  } catch { return ''; }
+}
+
 export function createTransferId(random = globalThis.crypto) {
   const bytes = random.getRandomValues(new Uint8Array(12));
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');

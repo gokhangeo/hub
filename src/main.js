@@ -630,6 +630,46 @@ function enqueueIncomingMetadata(meta) {
   showNextReceiveRequest();
 }
 
+// Bulutsuz Android app: files stream straight into Downloads/Bulutsuz through the native bridge,
+// so there is no blob link to tap and no memory limit.
+function androidBridge() {
+  const bridge = window.BulutsuzAndroid;
+  return bridge && typeof bridge.saveStart === 'function' ? bridge : null;
+}
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+function createAndroidWritable(meta) {
+  const bridge = androidBridge();
+  if (!bridge || meta.kind === 'text') return null;
+  let ok = false;
+  try { ok = bridge.saveStart(meta.id, meta.safeName, meta.mime || ''); } catch {}
+  if (!ok) return null;
+  let finished = false;
+  return {
+    android: true,
+    async write(data) { if (!bridge.saveChunk(meta.id, bytesToBase64(data))) throw new Error('İndirilenler klasörüne yazılamadı.'); },
+    async close() { if (!finished) { finished = true; bridge.saveEnd(meta.id, true); } },
+    async abort() { if (!finished) { finished = true; bridge.saveEnd(meta.id, false); } }
+  };
+}
+
+function showAndroidSaved(id) {
+  const card = transferCards.get(id)?.card;
+  const bridge = androidBridge();
+  if (!card || !bridge || typeof bridge.openSaved !== 'function') return;
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'button button--primary download-action';
+  open.textContent = 'Dosyayı aç';
+  open.addEventListener('click', () => { try { bridge.openSaved(id); } catch {} });
+  card.append(open);
+}
+
 function showNextReceiveRequest() {
   if (currentReceiveRequest || !receiveQueue.length) return;
   currentReceiveRequest = receiveQueue.shift();
@@ -638,7 +678,7 @@ function showNextReceiveRequest() {
   $('receive-accept').textContent = isText ? 'Kabul et' : 'Kabul et ve kaydet';
   $('receive-file-name').textContent = isText ? 'Kopyalanan metin' : currentReceiveRequest.safeName;
   $('receive-file-size').textContent = isText ? formatBytes(currentReceiveRequest.size) : `${formatBytes(currentReceiveRequest.size)} · ${currentReceiveRequest.mime || 'Bilinmeyen tür'}`;
-  const needsDisk = currentReceiveRequest.size > CONFIG.maxMemoryFileBytes;
+  const needsDisk = currentReceiveRequest.size > CONFIG.maxMemoryFileBytes && !(androidBridge() && !isText);
   // Text from an already paired device is shown in place; files sent back to the QR owner still ask first.
   if ((joiningFromLink || isText) && !needsDisk) { acceptReceiveRequest(); return; }
   $('receive-storage-note').textContent = needsDisk
@@ -656,8 +696,9 @@ async function acceptReceiveRequest(event) {
   const connection = currentConnection;
   try {
     const memoryUsed = Array.from(downloadSizes.values()).reduce((a, b) => a + b, 0) + Array.from(inboundTransfers.values()).filter((t) => !t.writable).reduce((a, t) => a + t.size, 0);
-    if (!mustStream && memoryUsed + meta.size > CONFIG.maxMemoryFileBytes) throw new Error('Bellek sınırına ulaşıldı. Alınan dosyaları indirip Tamamlananları temizle düğmesine basın.');
-    if (mustStream) {
+    if (!mustStream && !androidBridge() && memoryUsed + meta.size > CONFIG.maxMemoryFileBytes) throw new Error('Bellek sınırına ulaşıldı. Alınan dosyaları indirip Tamamlananları temizle düğmesine basın.');
+    writable = createAndroidWritable(meta);
+    if (mustStream && !writable) {
       if (!('showSaveFilePicker' in window)) throw new Error(`Tarayıcının güvenli bellek sınırı ${formatBytes(CONFIG.maxMemoryFileBytes)}.`);
       const handle = await window.showSaveFilePicker({ suggestedName: meta.safeName, types: [{ description: meta.mime || 'Dosya', accept: { [meta.mime || 'application/octet-stream']: ['.' + (meta.safeName.split('.').pop() || 'bin')] } }] });
       writable = await handle.createWritable();
@@ -728,12 +769,12 @@ async function finishIncomingTransfer(message) {
     const calculatedHash = transfer.hasher.digest('hex');
     if (!/^[a-f0-9]{64}$/.test(message.hash) || calculatedHash !== message.hash) throw new Error('Dosya aktarımı tamamlandı ancak bütünlük doğrulaması başarısız.');
     const isText = transfer.kind === 'text' && !transfer.writable;
-    if (transfer.writable) await transfer.writable.close();
+    if (transfer.writable) { await transfer.writable.close(); if (transfer.writable.android) showAndroidSaved(transfer.id); }
     else if (isText) showReceivedText(await new Blob(transfer.chunks).text(), transfer.id);
     else downloadBlob(new Blob(transfer.chunks, { type: transfer.mime || 'application/octet-stream' }), transfer.safeName, transfer.id);
     transfer.state = 'complete';
     setStatus(isText ? '✓ Metin alındı ve doğrulandı' : '✓ Dosya alındı ve doğrulandı', 'ready');
-    updateTransferCard(transfer.id, { state: 'complete', label: isText ? '✓ Metin alındı · doğrulandı' : '✓ Dosya alındı · doğrulandı', percent: 100 });
+    updateTransferCard(transfer.id, { state: 'complete', label: isText ? '✓ Metin alındı · doğrulandı' : transfer.writable?.android ? '✓ İndirilenler/Bulutsuz klasörüne kaydedildi' : '✓ Dosya alındı · doğrulandı', percent: 100 });
     transfer.connection.send({ type: 'file-ack', id: transfer.id, hash: calculatedHash });
     if (!isText) showToast(`“${transfer.safeName}” doğrulanarak kaydedildi.`, 'success');
     transfer.chunks = null;
@@ -857,7 +898,26 @@ function sendText(text) {
   processFiles([file]);
 }
 
+async function saveBlobAndroid(blob, filename, id) {
+  const writable = createAndroidWritable({ id, safeName: filename, mime: blob.type });
+  if (!writable) return false;
+  try {
+    for (let i = 0; i < blob.size; i += 512 * 1024) await writable.write(new Uint8Array(await blob.slice(i, i + 512 * 1024).arrayBuffer()));
+    await writable.close();
+    showAndroidSaved(id);
+    return true;
+  } catch { await writable.abort(); return false; }
+}
+
 function downloadBlob(blob, filename, id) {
+  if (androidBridge()) {
+    saveBlobAndroid(blob, filename, id).then((saved) => { if (!saved) downloadBlobLink(blob, filename, id); });
+    return;
+  }
+  downloadBlobLink(blob, filename, id);
+}
+
+function downloadBlobLink(blob, filename, id) {
   const url = URL.createObjectURL(blob);
   const actions = transferCards.get(id)?.card;
   const link = document.createElement('a');
